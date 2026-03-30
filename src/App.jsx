@@ -2094,8 +2094,101 @@ function RegisterPage({ onRegister, onShowLogin }) {
 // ─── Onboarding Wizard ───────────────────────────────────────────
 function OnboardingWizard({ onComplete }) {
   const [step, setStep] = useState(1);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const apiRef = useRef(null);
+  const logoInputRef = useRef(null);
+  const nurseryInputRef = useRef(null);
+
   const totalSteps = 8;
   const titles = ["Company Info", "Contact", "Location & Style", "Nursery List", "Pricing", "Tax & Terms", "CRM Connect", "Invite Team"];
+
+  // Company profile state
+  const [co, setCo] = useState({
+    name: '', phone: '', email: '', license_number: '',
+    city: '', state: '', usda_zone: '', design_style: '',
+    labor_pricing_method: 'lump_sum', material_markup_pct: 35, delivery_fee: 150,
+    tax_enabled: true, tax_rate: 0.0825, default_terms: '', warranty_terms: '',
+  });
+  const [logoFile, setLogoFile] = useState(null);
+  const [logoPreview, setLogoPreview] = useState(null);
+  const [selectedCrm, setSelectedCrm] = useState('');
+  const [crmApiKey, setCrmApiKey] = useState('');
+  const [invites, setInvites] = useState([{ email: '', role: 'estimator' }, { email: '', role: 'estimator' }]);
+
+  const update = (field, value) => setCo(prev => ({ ...prev, [field]: value }));
+
+  // Load API
+  useEffect(() => {
+    import("./api.js").then(mod => { apiRef.current = mod.default; }).catch(console.error);
+  }, []);
+
+  // Save company data when advancing past key steps
+  const handleNext = async () => {
+    if (!apiRef.current) { setStep(s => s + 1); return; }
+    setError(null);
+    setSaving(true);
+    try {
+      if (step === 1 || step === 2 || step === 3 || step === 5 || step === 6) {
+        // Save company profile fields
+        const fields = {};
+        if (step === 1) { fields.name = co.name; }
+        if (step === 2) { fields.phone = co.phone; fields.email = co.email; fields.license_number = co.license_number; }
+        if (step === 3) { fields.city = co.city; fields.state = co.state; fields.usda_zone = co.usda_zone; fields.default_design_style = co.design_style; }
+        if (step === 5) { fields.labor_pricing_method = co.labor_pricing_method; fields.material_markup_pct = parseFloat(co.material_markup_pct) || 35; fields.delivery_fee = parseFloat(co.delivery_fee) || 150; }
+        if (step === 6) { fields.tax_enabled = co.tax_enabled; fields.tax_rate = parseFloat(co.tax_rate) || 0.0825; fields.default_terms = co.default_terms; fields.warranty_terms = co.warranty_terms; }
+        await apiRef.current.company.update(fields);
+
+        // Upload logo if selected on step 1
+        if (step === 1 && logoFile) {
+          try {
+            await apiRef.current.files.upload(logoFile, 'logo');
+          } catch (e) { console.log('Logo upload:', e.message); }
+        }
+      }
+      if (step === 4 && nurseryInputRef.current?.files?.[0]) {
+        try {
+          await apiRef.current.plants.importList(nurseryInputRef.current.files[0]);
+        } catch (e) { console.log('Nursery import:', e.message); }
+      }
+      setStep(s => s + 1);
+    } catch (err) {
+      console.error('Onboarding save error:', err);
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleComplete = async () => {
+    setSaving(true);
+    try {
+      if (apiRef.current) {
+        // Send invites
+        for (const inv of invites) {
+          if (inv.email.trim()) {
+            try { await apiRef.current.auth.invite({ email: inv.email, role: inv.role }); } catch (e) { console.log('Invite error:', e.message); }
+          }
+        }
+        // Mark onboarding complete
+        await apiRef.current.company.completeOnboarding();
+      }
+      onComplete();
+    } catch (err) {
+      console.error('Onboarding complete error:', err);
+      onComplete(); // Still let them in
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleLogoSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setLogoFile(file);
+      setLogoPreview(URL.createObjectURL(file));
+    }
+  };
 
   return (
     <div className="onboarding-bg">
@@ -2129,27 +2222,56 @@ function OnboardingWizard({ onComplete }) {
           {step === 8 && "Invite your team members."}
         </p>
 
+        {error && (
+          <div style={{ padding: 12, background: "#FEE2E2", borderRadius: "var(--radius-sm)", marginBottom: 16, fontSize: 13, color: "#991B1B" }}>
+            {error}
+          </div>
+        )}
+
         {step === 1 && (
           <div>
-            <div className="form-group"><label className="form-label">Company Name</label><input className="form-input" placeholder="King's Garden Landscaping" /></div>
-            <div className="form-group"><label className="form-label">Company Logo</label><div className="upload-zone" style={{ padding: 20 }}><p>📷 Upload logo</p></div></div>
+            <div className="form-group">
+              <label className="form-label">Company Name</label>
+              <input className="form-input" placeholder="King's Garden Landscaping" value={co.name} onChange={e => update('name', e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Company Logo</label>
+              <input type="file" ref={logoInputRef} accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={handleLogoSelect} />
+              <div className="upload-zone" style={{ padding: 20, cursor: 'pointer' }} onClick={() => logoInputRef.current?.click()}>
+                {logoPreview ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <img src={logoPreview} alt="Logo preview" style={{ width: 60, height: 60, objectFit: 'contain', borderRadius: 8 }} />
+                    <div>
+                      <p style={{ fontWeight: 600, fontSize: 14 }}>{logoFile?.name}</p>
+                      <p style={{ fontSize: 12, color: 'var(--filo-grey)' }}>Click to change</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p>Click to upload company logo</p>
+                )}
+              </div>
+            </div>
           </div>
         )}
         {step === 2 && (
           <div>
-            <div className="form-group"><label className="form-label">Phone</label><input className="form-input" placeholder="(713) 555-0100" /></div>
-            <div className="form-group"><label className="form-label">Email</label><input className="form-input" placeholder="info@company.com" /></div>
-            <div className="form-group"><label className="form-label">License Number</label><input className="form-input" placeholder="Optional" /></div>
+            <div className="form-group"><label className="form-label">Phone</label><input className="form-input" placeholder="(713) 555-0100" value={co.phone} onChange={e => update('phone', e.target.value)} /></div>
+            <div className="form-group"><label className="form-label">Email</label><input className="form-input" placeholder="info@company.com" value={co.email} onChange={e => update('email', e.target.value)} /></div>
+            <div className="form-group"><label className="form-label">License Number</label><input className="form-input" placeholder="Optional" value={co.license_number} onChange={e => update('license_number', e.target.value)} /></div>
           </div>
         )}
         {step === 3 && (
           <div>
-            <div className="form-group"><label className="form-label">Geographic Location</label><input className="form-input" placeholder="Houston, TX" /></div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="form-group"><label className="form-label">City</label><input className="form-input" placeholder="Houston" value={co.city} onChange={e => update('city', e.target.value)} /></div>
+              <div className="form-group"><label className="form-label">State</label><input className="form-input" placeholder="TX" value={co.state} onChange={e => update('state', e.target.value)} /></div>
+            </div>
+            <div className="form-group"><label className="form-label">USDA Zone</label><input className="form-input" placeholder="e.g. 9a" value={co.usda_zone} onChange={e => update('usda_zone', e.target.value)} /></div>
             <div className="form-group">
               <label className="form-label">Default Design Style</label>
               <div className="pill-group">
                 {["Formal", "Naturalistic", "Modern", "Tropical", "Xeriscape"].map(s => (
-                  <span key={s} className="pill">{s}</span>
+                  <span key={s} className={cn("pill", co.design_style === s && "active")} onClick={() => update('design_style', s)}>{s}</span>
                 ))}
               </div>
             </div>
@@ -2157,7 +2279,12 @@ function OnboardingWizard({ onComplete }) {
         )}
         {step === 4 && (
           <div>
-            <div className="upload-zone"><div className="icon">📄</div><p>Upload nursery availability list<br/><span style={{ fontSize: 12 }}>PDF, Excel, CSV, or plain text</span></p></div>
+            <input type="file" ref={nurseryInputRef} accept=".pdf,.csv,.txt,.xlsx,.xls" style={{ display: 'none' }}
+              onChange={e => e.target.files?.[0] && setError(null)} />
+            <div className="upload-zone" style={{ cursor: 'pointer' }} onClick={() => nurseryInputRef.current?.click()}>
+              <div className="icon">📄</div>
+              <p>{nurseryInputRef.current?.files?.[0]?.name || "Upload nursery availability list"}<br/><span style={{ fontSize: 12 }}>PDF, Excel, CSV, or plain text</span></p>
+            </div>
             <p style={{ fontSize: 12, color: "var(--filo-grey)", marginTop: 12, textAlign: "center" }}>Skip this step to use FILO's default local plant database</p>
           </div>
         )}
@@ -2165,11 +2292,15 @@ function OnboardingWizard({ onComplete }) {
           <div>
             <div className="form-group">
               <label className="form-label">Labor Pricing Method</label>
-              <select className="form-input"><option>Per Gallon</option><option>Per Estimated Man Hours</option><option>Lump Sum</option></select>
+              <select className="form-input" value={co.labor_pricing_method} onChange={e => update('labor_pricing_method', e.target.value)}>
+                <option value="per_gallon">Per Gallon</option>
+                <option value="per_man_hour">Per Estimated Man Hours</option>
+                <option value="lump_sum">Lump Sum</option>
+              </select>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div className="form-group"><label className="form-label">Material Markup %</label><input className="form-input" defaultValue="35" /></div>
-              <div className="form-group"><label className="form-label">Delivery Fee</label><input className="form-input" defaultValue="150" /></div>
+              <div className="form-group"><label className="form-label">Material Markup %</label><input className="form-input" type="number" value={co.material_markup_pct} onChange={e => update('material_markup_pct', e.target.value)} /></div>
+              <div className="form-group"><label className="form-label">Delivery Fee</label><input className="form-input" type="number" value={co.delivery_fee} onChange={e => update('delivery_fee', e.target.value)} /></div>
             </div>
           </div>
         )}
@@ -2177,43 +2308,63 @@ function OnboardingWizard({ onComplete }) {
           <div>
             <div className="form-group">
               <label className="form-label">Include Tax?</label>
-              <div className="toggle-wrap" style={{ marginTop: 4 }}><div className="toggle on"></div><span>Yes</span></div>
+              <div className="toggle-wrap" style={{ marginTop: 4 }}>
+                <div className={cn("toggle", co.tax_enabled && "on")} onClick={() => update('tax_enabled', !co.tax_enabled)}></div>
+                <span>{co.tax_enabled ? 'Yes' : 'No'}</span>
+              </div>
             </div>
-            <div className="form-group"><label className="form-label">Tax Rate</label><input className="form-input" defaultValue="8.25%" /></div>
-            <div className="form-group"><label className="form-label">Default Terms</label><textarea className="form-input" rows={3} placeholder="50% deposit required..." /></div>
+            {co.tax_enabled && <div className="form-group"><label className="form-label">Tax Rate (%)</label><input className="form-input" value={(co.tax_rate * 100).toFixed(2)} onChange={e => update('tax_rate', (parseFloat(e.target.value) || 0) / 100)} /></div>}
+            <div className="form-group"><label className="form-label">Default Terms</label><textarea className="form-input" rows={3} placeholder="50% deposit required..." value={co.default_terms} onChange={e => update('default_terms', e.target.value)} /></div>
+            <div className="form-group"><label className="form-label">Warranty Terms</label><textarea className="form-input" rows={2} placeholder="1 year plant replacement warranty..." value={co.warranty_terms} onChange={e => update('warranty_terms', e.target.value)} /></div>
           </div>
         )}
         {step === 7 && (
           <div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
               {CRM_OPTIONS.slice(0, 9).map(crm => (
-                <div key={crm} style={{ padding: 12, border: "1px solid var(--filo-light)", borderRadius: "var(--radius-sm)", textAlign: "center", cursor: "pointer", fontSize: 13 }}>{crm}</div>
+                <div key={crm} onClick={() => setSelectedCrm(crm)} style={{
+                  padding: 12, border: `2px solid ${selectedCrm === crm ? 'var(--filo-green)' : 'var(--filo-light)'}`,
+                  background: selectedCrm === crm ? 'var(--filo-green-pale)' : 'white',
+                  borderRadius: "var(--radius-sm)", textAlign: "center", cursor: "pointer", fontSize: 13, fontWeight: selectedCrm === crm ? 600 : 400,
+                }}>{crm}</div>
               ))}
             </div>
-            <div className="form-group" style={{ marginTop: 16 }}>
-              <label className="form-label">API Key</label>
-              <input className="form-input" placeholder="Paste your CRM API key" />
-            </div>
+            {selectedCrm && (
+              <div className="form-group" style={{ marginTop: 16 }}>
+                <label className="form-label">{selectedCrm} API Key</label>
+                <input className="form-input" placeholder="Paste your CRM API key" value={crmApiKey} onChange={e => setCrmApiKey(e.target.value)} />
+              </div>
+            )}
+            <p style={{ fontSize: 12, color: "var(--filo-grey)", marginTop: 12, textAlign: "center" }}>Skip this step if you don't use a CRM yet</p>
           </div>
         )}
         {step === 8 && (
           <div>
             <p style={{ fontSize: 14, color: "var(--filo-grey)", marginBottom: 16 }}>Your plan includes 3 users. Additional users are $500/mo each.</p>
-            {[1, 2].map(i => (
+            {invites.map((inv, i) => (
               <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                <input className="form-input" placeholder={`Team member ${i} email`} style={{ flex: 1 }} />
-                <select className="form-input" style={{ width: 140 }}><option>Estimator</option><option>Admin</option></select>
+                <input className="form-input" placeholder={`Team member ${i + 1} email`} style={{ flex: 1 }}
+                  value={inv.email} onChange={e => setInvites(prev => prev.map((p, idx) => idx === i ? { ...p, email: e.target.value } : p))} />
+                <select className="form-input" style={{ width: 140 }} value={inv.role}
+                  onChange={e => setInvites(prev => prev.map((p, idx) => idx === i ? { ...p, role: e.target.value } : p))}>
+                  <option value="estimator">Estimator</option>
+                  <option value="admin">Admin</option>
+                </select>
               </div>
             ))}
           </div>
         )}
 
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 32 }}>
-          {step > 1 ? <button className="btn btn-secondary" onClick={() => setStep(s => s - 1)}>← Back</button> : <div></div>}
+          {step > 1 ? <button className="btn btn-secondary" onClick={() => { setError(null); setStep(s => s - 1); }} disabled={saving}>← Back</button> : <div></div>}
           {step < totalSteps ? (
-            <button className="btn btn-primary" onClick={() => setStep(s => s + 1)}>Continue →</button>
+            <button className="btn btn-primary" onClick={handleNext} disabled={saving}>
+              {saving ? "Saving..." : "Continue →"}
+            </button>
           ) : (
-            <button className="btn btn-gold btn-lg" onClick={onComplete}>🚀 Launch FILO</button>
+            <button className="btn btn-gold btn-lg" onClick={handleComplete} disabled={saving}>
+              {saving ? "Setting up..." : "Launch FILO"}
+            </button>
           )}
         </div>
       </div>
