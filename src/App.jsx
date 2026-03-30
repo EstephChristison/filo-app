@@ -682,19 +682,278 @@ function ProjectsPage({ setPage }) {
 
 // ─── New Project Wizard ──────────────────────────────────────────
 function NewProjectPage() {
+  const { setPage } = useApp();
   const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [apiReady, setApiReady] = useState(false);
+  const apiRef = useRef(null);
+  const fileInputRefs = useRef({});
+
+  // Form data
   const [project, setProject] = useState({
     clientName: "", address: "", phone: "", email: "",
-    areas: [], photos: [], existingPlants: [],
+    areas: [],
     sun: "", style: "", specialRequests: "", lighting: false, hardscape: false,
-    designPlants: [], chatMessages: [],
-    estimateApproved: false,
   });
+
+  // File selections (not yet uploaded)
+  const [selectedFiles, setSelectedFiles] = useState({}); // { areaName: File[] }
+
+  // API response data persisted across steps
+  const [clientId, setClientId] = useState(null);
+  const [projectId, setProjectId] = useState(null);
+  const [areaMap, setAreaMap] = useState({}); // { areaName: { id, ...areaData } }
+  const [uploadedPhotos, setUploadedPhotos] = useState({}); // { areaName: photoData[] }
+  const [detectedPlants, setDetectedPlants] = useState([]); // from AI detection
+  const [plantMarks, setPlantMarks] = useState({}); // { plantId: 'keep' | 'remove' }
+  const [removalCost, setRemovalCost] = useState("350.00");
+  const [design, setDesign] = useState(null);
+  const [designPlants, setDesignPlants] = useState([]);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState("");
+  const [estimate, setEstimate] = useState(null);
+  const [estimateApproved, setEstimateApproved] = useState(false);
+  const [submittal, setSubmittal] = useState(null);
+  const [exportData, setExportData] = useState(null);
+
+  // Load API module
+  useEffect(() => {
+    import("./api.js").then(mod => { apiRef.current = mod.default; setApiReady(true); }).catch(console.error);
+  }, []);
 
   const totalSteps = 10;
   const stepTitles = ["Client Info", "Property Areas", "Photo Upload", "Plant Detection", "Design Options", "AI Design", "Review & Adjust", "Estimate", "Submittal", "CRM Push"];
 
   const updateProject = (updates) => setProject(p => ({ ...p, ...updates }));
+
+  // ─── Step transition handlers ─────────────────────────────────
+  const handleNext = async () => {
+    if (!apiRef.current) return;
+    const api = apiRef.current;
+    setError(null);
+    setLoading(true);
+
+    try {
+      switch (step) {
+        case 1: {
+          // Create client
+          if (!project.clientName || !project.address) throw new Error("Client name and address are required.");
+          const client = await api.clients.create({
+            name: project.clientName,
+            address: project.address,
+            phone: project.phone || null,
+            email: project.email || null,
+          });
+          setClientId(client.id);
+          setStep(2);
+          break;
+        }
+        case 2: {
+          // Create project + areas
+          const areas = project.areas.length > 0 ? project.areas : ["Front Yard"];
+          if (!clientId) throw new Error("Client must be created first.");
+          const proj = await api.projects.create({
+            client_id: clientId,
+            name: `${project.clientName} - Landscape Design`,
+            address: project.address,
+            status: "photo_upload",
+          });
+          setProjectId(proj.id);
+          // Create each area
+          const aMap = {};
+          for (const areaName of areas) {
+            const area = await api.projects.createArea(proj.id, { name: areaName, area_type: areaName.toLowerCase().replace(/[^a-z]/g, '_') });
+            aMap[areaName] = area;
+          }
+          setAreaMap(aMap);
+          setStep(3);
+          break;
+        }
+        case 3: {
+          // Upload photos for each area
+          const areas = Object.keys(selectedFiles);
+          if (areas.length === 0) {
+            // Allow skipping if no photos (will use placeholder)
+            setStep(4);
+            break;
+          }
+          const allPhotos = {};
+          for (const areaName of areas) {
+            const files = selectedFiles[areaName];
+            if (!files || files.length === 0) continue;
+            const areaData = areaMap[areaName];
+            if (!areaData) continue;
+            const photos = await api.files.uploadPhotos(areaData.id, files);
+            allPhotos[areaName] = photos;
+          }
+          setUploadedPhotos(allPhotos);
+          // Fetch detected plants (AI detection is triggered server-side on upload)
+          // Give it a moment, then fetch
+          try {
+            const firstArea = Object.values(areaMap)[0];
+            if (firstArea) {
+              const existing = await api.existingPlants.list(firstArea.id);
+              setDetectedPlants(existing || []);
+              // Initialize marks
+              const marks = {};
+              (existing || []).forEach(p => { marks[p.id] = p.mark || 'keep'; });
+              setPlantMarks(marks);
+            }
+          } catch (e) {
+            console.log("Plant detection not yet complete:", e.message);
+          }
+          setStep(4);
+          break;
+        }
+        case 4: {
+          // Save plant marks to backend
+          for (const [plantId, mark] of Object.entries(plantMarks)) {
+            try {
+              await api.existingPlants.mark(plantId, mark, mark === 'remove' ? 'Marked for removal' : '');
+            } catch (e) { console.log("Could not mark plant:", e.message); }
+          }
+          setStep(5);
+          break;
+        }
+        case 5: {
+          // Save design preferences to project
+          if (projectId) {
+            await api.projects.update(projectId, {
+              sun_exposure: project.sun,
+              design_style: project.style,
+              special_requests: project.specialRequests,
+              include_lighting: project.lighting,
+              include_hardscape: project.hardscape,
+            });
+            // Trigger AI design generation
+            await api.projects.updateStatus(projectId, 'design_generation');
+            try {
+              const designResult = await api.projects.generateDesign(projectId);
+              setDesign(designResult.design || designResult);
+              setDesignPlants(designResult.plants || designResult.design?.plants || []);
+              if (designResult.design?.id) {
+                setChatMessages([{ role: 'ai', text: 'Your design is ready! I\'ve selected plants based on your preferences and the property conditions. You can ask me to make changes — try "swap all shrubs for native species" or "add more color near the walkway".' }]);
+              }
+            } catch (e) {
+              console.log("Design generation error:", e.message);
+              setChatMessages([{ role: 'ai', text: 'Design generation encountered an issue. You can still proceed and make adjustments manually.' }]);
+            }
+          }
+          setStep(6);
+          break;
+        }
+        case 6: {
+          // Move to review (design should be ready)
+          setStep(7);
+          break;
+        }
+        case 7: {
+          // Generate estimate
+          if (projectId) {
+            try {
+              const est = await api.projects.generateEstimate(projectId);
+              setEstimate(est.estimate || est);
+            } catch (e) {
+              console.log("Estimate generation error:", e.message);
+            }
+          }
+          setStep(8);
+          break;
+        }
+        case 8: {
+          // Approve estimate and generate submittal
+          if (projectId) {
+            if (estimate?.id && !estimateApproved) {
+              try {
+                await api.estimates.approve(estimate.id);
+                setEstimateApproved(true);
+              } catch (e) { console.log("Estimate approve error:", e.message); }
+            }
+            try {
+              const sub = await api.projects.generateSubmittal(projectId);
+              setSubmittal(sub.submittal || sub);
+            } catch (e) {
+              console.log("Submittal generation error:", e.message);
+            }
+          }
+          setStep(9);
+          break;
+        }
+        case 9: {
+          // Final step — export / CRM push
+          if (projectId) {
+            await api.projects.updateStatus(projectId, 'completed');
+            try {
+              const exp = await api.projects.exportAll(projectId);
+              setExportData(exp);
+            } catch (e) { console.log("Export error:", e.message); }
+          }
+          setStep(10);
+          break;
+        }
+        default:
+          setStep(s => Math.min(s + 1, totalSteps));
+      }
+    } catch (err) {
+      console.error("Step error:", err);
+      setError(err.message || "Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBack = () => {
+    setError(null);
+    setStep(s => Math.max(s - 1, 1));
+  };
+
+  // Chat handler for design review
+  const handleChatSend = async () => {
+    if (!chatInput.trim() || !design?.id || !apiRef.current) return;
+    const msg = chatInput.trim();
+    setChatInput("");
+    setChatMessages(prev => [...prev, { role: 'user', text: msg }]);
+    try {
+      const result = await apiRef.current.designs.chat(design.id, msg);
+      setChatMessages(prev => [...prev, { role: 'ai', text: result.response || result.message || 'Changes applied.' }]);
+      if (result.plants) setDesignPlants(result.plants);
+    } catch (e) {
+      setChatMessages(prev => [...prev, { role: 'ai', text: `Sorry, I couldn't process that: ${e.message}` }]);
+    }
+  };
+
+  // File selection handler
+  const handleFileSelect = (areaName, files) => {
+    setSelectedFiles(prev => ({
+      ...prev,
+      [areaName]: [...(prev[areaName] || []), ...Array.from(files)],
+    }));
+  };
+
+  const removeFile = (areaName, index) => {
+    setSelectedFiles(prev => ({
+      ...prev,
+      [areaName]: (prev[areaName] || []).filter((_, i) => i !== index),
+    }));
+  };
+
+  // Determine button label
+  const getNextLabel = () => {
+    if (loading) return "Working...";
+    switch (step) {
+      case 1: return "Create Client & Continue →";
+      case 2: return "Create Project →";
+      case 3: return selectedFiles && Object.values(selectedFiles).some(f => f.length > 0) ? "Upload & Detect Plants →" : "Skip Photos →";
+      case 4: return "Save & Continue →";
+      case 5: return "Generate AI Design →";
+      case 6: return "Review Design →";
+      case 7: return "Generate Estimate →";
+      case 8: return "Approve & Create Submittal →";
+      case 9: return "Complete Project →";
+      default: return "Continue →";
+    }
+  };
 
   return (
     <div className="fade-in">
@@ -704,16 +963,24 @@ function NewProjectPage() {
           <p>Step {step} of {totalSteps} — {stepTitles[step - 1]}</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          {step > 1 && <button className="btn btn-secondary" onClick={() => setStep(s => s - 1)}>← Back</button>}
+          {step > 1 && step < 10 && <button className="btn btn-secondary" onClick={handleBack} disabled={loading}>← Back</button>}
           {step < totalSteps && (
-            <button className="btn btn-primary" onClick={() => setStep(s => s + 1)}>
-              {step === totalSteps - 1 ? "Generate" : "Continue →"}
+            <button className="btn btn-primary" onClick={handleNext} disabled={loading || !apiReady}>
+              {getNextLabel()}
             </button>
           )}
         </div>
       </div>
 
       <div className="page-body">
+        {/* Error Banner */}
+        {error && (
+          <div style={{ padding: 16, background: "#FEE2E2", borderRadius: "var(--radius-sm)", marginBottom: 20, fontSize: 14, color: "#991B1B", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span>{error}</span>
+            <button onClick={() => setError(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16 }}>✕</button>
+          </div>
+        )}
+
         {/* Progress Bar */}
         <div style={{ display: "flex", gap: 4, marginBottom: 32 }}>
           {Array.from({ length: totalSteps }, (_, i) => (
@@ -758,7 +1025,7 @@ function NewProjectPage() {
                 </div>
               </div>
               <div style={{ padding: 16, background: "var(--filo-green-pale)", borderRadius: "var(--radius-sm)", fontSize: 13, color: "var(--filo-green)" }}>
-                💡 Client data will be stored in FILO and automatically pushed to your connected CRM.
+                This creates a real client record in your FILO database and syncs to connected CRMs.
               </div>
             </div>
           </div>
@@ -791,11 +1058,16 @@ function NewProjectPage() {
                   );
                 })}
               </div>
+              {clientId && (
+                <div style={{ marginTop: 16, padding: 12, background: "var(--filo-green-pale)", borderRadius: "var(--radius-sm)", fontSize: 12, color: "var(--filo-green)" }}>
+                  Client created successfully. This step will create the project and property areas.
+                </div>
+              )}
             </div>
           </div>
         )}
 
-        {/* Step 3: Photo Upload */}
+        {/* Step 3: Photo Upload — REAL file upload */}
         {step === 3 && (
           <div className="card scale-in">
             <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Upload Photos</h3></div>
@@ -803,79 +1075,102 @@ function NewProjectPage() {
               {(project.areas.length > 0 ? project.areas : ["Front Yard"]).map(area => (
                 <div key={area} style={{ marginBottom: 24 }}>
                   <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>📸 {area}</h4>
-                  <div className="upload-zone">
+                  <div className="upload-zone" onClick={() => fileInputRefs.current[area]?.click()}
+                    onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--filo-green)'; }}
+                    onDragLeave={e => { e.currentTarget.style.borderColor = ''; }}
+                    onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor = ''; handleFileSelect(area, e.dataTransfer.files); }}
+                    style={{ cursor: 'pointer' }}>
+                    <input type="file" ref={el => fileInputRefs.current[area] = el} multiple accept="image/jpeg,image/png,image/heic,image/webp"
+                      style={{ display: 'none' }} onChange={e => { handleFileSelect(area, e.target.files); e.target.value = ''; }} />
                     <div className="icon">📷</div>
                     <p><strong>Tap to upload</strong> or drag and drop photos</p>
                     <p style={{ fontSize: 12, marginTop: 4 }}>JPG, PNG, HEIC up to 25MB each</p>
                   </div>
                   <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                    {[1, 2].map(n => (
-                      <div key={n} style={{
+                    {(selectedFiles[area] || []).map((file, idx) => (
+                      <div key={idx} style={{
                         width: 100, height: 100, borderRadius: "var(--radius-sm)",
-                        background: "linear-gradient(135deg, #8FBC8F, #6B8E5C)",
+                        background: "var(--filo-slate)", overflow: "hidden",
                         display: "flex", alignItems: "center", justifyContent: "center",
                         fontSize: 10, color: "white", fontWeight: 500, position: "relative"
                       }}>
-                        Demo {n}
-                        <button style={{ position: "absolute", top: 4, right: 4, background: "rgba(0,0,0,0.5)", border: "none", color: "white", borderRadius: "50%", width: 18, height: 18, fontSize: 10, cursor: "pointer" }}>✕</button>
+                        <img src={URL.createObjectURL(file)} alt={file.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          onLoad={e => URL.revokeObjectURL(e.target.src)} />
+                        <button onClick={(e) => { e.stopPropagation(); removeFile(area, idx); }}
+                          style={{ position: "absolute", top: 4, right: 4, background: "rgba(0,0,0,0.6)", border: "none", color: "white", borderRadius: "50%", width: 20, height: 20, fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+                        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.6)", padding: "2px 4px", fontSize: 9, textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+                          {file.name}
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
               ))}
               <div style={{ padding: 16, background: "#FEF3C7", borderRadius: "var(--radius-sm)", fontSize: 13, color: "#92400E" }}>
-                ⚠️ Multiple photos of the same area? We'll ask if they're different angles of the same space.
+                Photos upload to Supabase Storage and AI plant detection runs automatically on the server.
               </div>
             </div>
           </div>
         )}
 
-        {/* Step 4: Existing Plant Detection */}
+        {/* Step 4: Existing Plant Detection — REAL data */}
         {step === 4 && (
           <div className="card scale-in">
             <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Existing Plant Detection</h3></div>
             <div className="card-body">
-              <p style={{ fontSize: 14, color: "var(--filo-grey)", marginBottom: 20 }}>AI has detected existing plants in the bed. Mark plants to <span style={{ color: "var(--filo-green)", fontWeight: 600 }}>KEEP (green)</span> or <span style={{ color: "var(--filo-red)", fontWeight: 600 }}>REMOVE (red)</span>.</p>
-              <div style={{ background: "linear-gradient(180deg, #87CEEB 0%, #87CEEB 30%, #8FBC8F 30%, #6B8E5C 100%)", borderRadius: "var(--radius)", minHeight: 300, position: "relative", marginBottom: 20 }}>
-                {[
-                  { x: 20, y: 60, name: "Ligustrum", status: "keep" },
-                  { x: 45, y: 65, name: "Azalea", status: "remove" },
-                  { x: 70, y: 58, name: "Indian Hawthorn", status: "keep" },
-                  { x: 35, y: 75, name: "Dead shrub", status: "remove" },
-                ].map((plant, i) => (
-                  <div key={i} style={{
-                    position: "absolute", left: `${plant.x}%`, top: `${plant.y}%`,
-                    transform: "translate(-50%, -50%)",
-                  }}>
-                    <div style={{
-                      width: 48, height: 48, borderRadius: "50%",
-                      border: `3px solid ${plant.status === "keep" ? "var(--filo-green-bright)" : "var(--filo-red)"}`,
-                      background: `${plant.status === "keep" ? "rgba(82,183,136,0.3)" : "rgba(239,68,68,0.3)"}`,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      cursor: "pointer", fontSize: 20,
-                    }}>
-                      {plant.status === "keep" ? "🌿" : "❌"}
-                    </div>
-                    <div style={{
-                      position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)",
-                      background: "white", padding: "4px 8px", borderRadius: 6, fontSize: 11,
-                      fontWeight: 500, whiteSpace: "nowrap", marginTop: 4, boxShadow: "var(--shadow-sm)"
-                    }}>{plant.name}</div>
+              {detectedPlants.length > 0 ? (
+                <>
+                  <p style={{ fontSize: 14, color: "var(--filo-grey)", marginBottom: 20 }}>AI has detected existing plants. Mark plants to <span style={{ color: "var(--filo-green)", fontWeight: 600 }}>KEEP</span> or <span style={{ color: "var(--filo-red)", fontWeight: 600 }}>REMOVE</span>.</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+                    {detectedPlants.map(plant => {
+                      const mark = plantMarks[plant.id] || 'keep';
+                      return (
+                        <div key={plant.id} style={{
+                          padding: 12, borderRadius: "var(--radius-sm)", display: "flex", alignItems: "center", justifyContent: "space-between",
+                          border: `2px solid ${mark === 'keep' ? 'var(--filo-green)' : 'var(--filo-red)'}`,
+                          background: mark === 'keep' ? 'var(--filo-green-pale)' : '#FEE2E2',
+                        }}>
+                          <div>
+                            <span style={{ fontWeight: 600 }}>{plant.common_name || plant.botanical_name || 'Unknown Plant'}</span>
+                            {plant.confidence && <span style={{ fontSize: 11, color: "var(--filo-grey)", marginLeft: 8 }}>({Math.round(plant.confidence * 100)}% confidence)</span>}
+                          </div>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button className={`btn btn-sm ${mark === 'keep' ? 'btn-primary' : 'btn-ghost'}`}
+                              onClick={() => setPlantMarks(prev => ({ ...prev, [plant.id]: 'keep' }))}>Keep</button>
+                            <button className={`btn btn-sm ${mark === 'remove' ? 'btn-primary' : 'btn-ghost'}`}
+                              style={mark === 'remove' ? { background: 'var(--filo-red)' } : {}}
+                              onClick={() => setPlantMarks(prev => ({ ...prev, [plant.id]: 'remove' }))}>Remove</button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
-              </div>
-              <div style={{ display: "flex", gap: 16, fontSize: 13 }}>
-                <div style={{ flex: 1, padding: 12, background: "var(--filo-green-pale)", borderRadius: "var(--radius-sm)" }}>
-                  ✅ <strong>2 plants</strong> marked to keep
+                  <div style={{ display: "flex", gap: 16, fontSize: 13 }}>
+                    <div style={{ flex: 1, padding: 12, background: "var(--filo-green-pale)", borderRadius: "var(--radius-sm)" }}>
+                      {Object.values(plantMarks).filter(m => m === 'keep').length} plants to keep
+                    </div>
+                    <div style={{ flex: 1, padding: 12, background: "#FEE2E2", borderRadius: "var(--radius-sm)" }}>
+                      {Object.values(plantMarks).filter(m => m === 'remove').length} plants to remove
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div style={{ textAlign: "center", padding: 40 }}>
+                  <div style={{ fontSize: 48, marginBottom: 16 }}>🌿</div>
+                  <p style={{ color: "var(--filo-grey)", marginBottom: 8 }}>No plants detected yet.</p>
+                  <p style={{ fontSize: 13, color: "var(--filo-silver)" }}>
+                    {Object.keys(uploadedPhotos).length > 0
+                      ? "AI plant detection is processing. You can proceed and come back later."
+                      : "Upload photos in the previous step to enable AI plant detection."}
+                  </p>
                 </div>
-                <div style={{ flex: 1, padding: 12, background: "#FEE2E2", borderRadius: "var(--radius-sm)" }}>
-                  🗑️ <strong>2 plants</strong> marked for removal
-                </div>
-              </div>
+              )}
               <div style={{ marginTop: 16 }}>
-                <label className="form-label">Removal appears as a lump sum line item</label>
+                <label className="form-label">Removal cost (lump sum line item)</label>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <input className="form-input" style={{ width: 120 }} defaultValue="350.00" />
+                  <span style={{ fontSize: 14, fontWeight: 500 }}>$</span>
+                  <input className="form-input" style={{ width: 120 }} value={removalCost}
+                    onChange={e => setRemovalCost(e.target.value)} />
                   <span style={{ fontSize: 13, color: "var(--filo-grey)" }}>Haul away included</span>
                 </div>
               </div>
@@ -891,7 +1186,7 @@ function NewProjectPage() {
               <div className="form-group">
                 <label className="form-label">Sun Exposure</label>
                 <div className="pill-group">
-                  {["Full Sun ☀️", "Partial Shade ⛅", "Full Shade 🌑"].map(opt => (
+                  {["Full Sun", "Partial Shade", "Full Shade"].map(opt => (
                     <span key={opt} className={cn("pill", project.sun === opt && "active")}
                       onClick={() => updateProject({ sun: opt })}>{opt}</span>
                   ))}
@@ -916,102 +1211,84 @@ function NewProjectPage() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   <div className="toggle-wrap">
                     <div className={cn("toggle", project.lighting && "on")} onClick={() => updateProject({ lighting: !project.lighting })}></div>
-                    <span style={{ fontSize: 14 }}>💡 Landscape Lighting</span>
+                    <span style={{ fontSize: 14 }}>Landscape Lighting</span>
                   </div>
-                  {project.lighting && (
-                    <div className="pill-group" style={{ paddingLeft: 56 }}>
-                      {["Pathway Lighting", "Uplighting", "Tree Moonlighting", "Accent Lighting"].map(t => (
-                        <span key={t} className="pill">{t}</span>
-                      ))}
-                    </div>
-                  )}
                   <div className="toggle-wrap">
                     <div className={cn("toggle", project.hardscape && "on")} onClick={() => updateProject({ hardscape: !project.hardscape })}></div>
-                    <span style={{ fontSize: 14 }}>🧱 Hardscape Changes</span>
+                    <span style={{ fontSize: 14 }}>Hardscape Changes</span>
                   </div>
                 </div>
+              </div>
+              <div style={{ padding: 16, background: "var(--filo-green-pale)", borderRadius: "var(--radius-sm)", fontSize: 13, color: "var(--filo-green)" }}>
+                Clicking next saves these preferences and triggers the AI design engine.
               </div>
             </div>
           </div>
         )}
 
-        {/* Step 6: AI Design Generation */}
+        {/* Step 6: AI Design Generation — REAL */}
         {step === 6 && (
           <div className="scale-in">
             <div className="card" style={{ marginBottom: 24 }}>
               <div className="card-body" style={{ textAlign: "center", padding: 60 }}>
                 <div style={{ fontSize: 64, marginBottom: 16 }}>🌿</div>
-                <h3 style={{ fontFamily: "var(--font-display)", fontSize: 24, marginBottom: 8 }}>AI Design in Progress</h3>
+                <h3 style={{ fontFamily: "var(--font-display)", fontSize: 24, marginBottom: 8 }}>
+                  {design ? "AI Design Complete" : "AI Design in Progress"}
+                </h3>
                 <p style={{ color: "var(--filo-grey)", marginBottom: 24, maxWidth: 500, margin: "0 auto 24px" }}>
-                  FILO is analyzing the uploaded photos, selecting plants based on sun exposure, architecture, and your style preferences...
+                  {design
+                    ? "Your landscape design has been generated. Click 'Review Design' to make adjustments."
+                    : "FILO is analyzing the uploaded photos, selecting plants based on sun exposure, architecture, and your style preferences..."
+                  }
                 </p>
-                <div className="progress-bar" style={{ maxWidth: 400, margin: "0 auto", marginBottom: 12 }}>
-                  <div className="progress-fill" style={{ width: "75%" }}></div>
-                </div>
-                <div style={{ fontSize: 13, color: "var(--filo-grey)" }}>
-                  Selecting plants • Calculating spacing • Rendering photorealistic design
-                </div>
+                {!design && (
+                  <div className="progress-bar" style={{ maxWidth: 400, margin: "0 auto", marginBottom: 12 }}>
+                    <div className="progress-fill" style={{ width: "100%", animation: "none" }}></div>
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="card">
-              <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Design Preview</h3></div>
-              <div className="card-body">
-                <div className="design-canvas">
-                  <div className="house"></div>
-                  <div className="bed-area">
-                    {PLANTS_DB.slice(0, 8).map((plant, i) => (
-                      <div key={plant.id} className="design-plant" style={{
-                        left: `${10 + (i * 12)}%`, top: `${15 + (i % 3) * 20}%`,
-                        fontSize: plant.type === "tree" ? 36 : plant.type === "groundcover" ? 16 : 24,
-                      }}>
-                        {plant.img}
-                      </div>
+            {designPlants.length > 0 && (
+              <div className="card">
+                <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Design Preview — Plant Selection</h3></div>
+                <div className="card-body">
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {designPlants.map((p, i) => (
+                      <span key={i} style={{ fontSize: 12, background: "var(--filo-offwhite)", padding: "6px 12px", borderRadius: 12 }}>
+                        🌿 {p.common_name || p.plant_name || p.name} {p.quantity ? `× ${p.quantity}` : ''}
+                      </span>
                     ))}
                   </div>
                 </div>
-                <div style={{ marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {PLANTS_DB.slice(0, 6).map(p => (
-                    <span key={p.id} style={{ fontSize: 12, background: "var(--filo-offwhite)", padding: "4px 10px", borderRadius: 12 }}>
-                      {p.img} {p.name.split("'")[0].trim()} × {Math.floor(Math.random() * 5) + 1}
-                    </span>
-                  ))}
-                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
-        {/* Step 7: Review & Adjust */}
+        {/* Step 7: Review & Adjust — REAL chat */}
         {step === 7 && (
           <div className="scale-in" style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 24 }}>
             <div>
               <div className="card" style={{ marginBottom: 24 }}>
                 <div className="card-header">
                   <h3 style={{ fontFamily: "var(--font-display)" }}>Design Canvas</h3>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button className="btn btn-secondary btn-sm">↩ Undo</button>
-                    <button className="btn btn-secondary btn-sm">↪ Redo</button>
-                  </div>
                 </div>
                 <div className="card-body">
                   <div className="design-canvas" style={{ minHeight: 450 }}>
                     <div className="house"></div>
                     <div className="bed-area">
-                      {PLANTS_DB.slice(0, 8).map((plant, i) => (
-                        <div key={plant.id} className="design-plant" title={`Drag to reposition: ${plant.name}`}
+                      {(designPlants.length > 0 ? designPlants : PLANTS_DB).slice(0, 8).map((plant, i) => (
+                        <div key={plant.id || i} className="design-plant" title={plant.common_name || plant.name}
                           style={{
                             left: `${8 + (i * 12)}%`, top: `${10 + (i % 3) * 25}%`,
-                            fontSize: plant.type === "tree" ? 36 : plant.type === "groundcover" ? 16 : 24,
+                            fontSize: (plant.category === "tree" || plant.type === "tree") ? 36 : 24,
                           }}>
-                          {plant.img}
+                          {plant.img || "🌿"}
                         </div>
                       ))}
                     </div>
                   </div>
-                  <p style={{ fontSize: 12, color: "var(--filo-grey)", marginTop: 8, textAlign: "center" }}>
-                    🖱️ Drag plants to reposition • Click to select • Desktop only
-                  </p>
                 </div>
               </div>
 
@@ -1019,12 +1296,12 @@ function NewProjectPage() {
                 <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Plant Palette</h3></div>
                 <div className="card-body">
                   <div className="plant-grid">
-                    {PLANTS_DB.slice(0, 6).map(p => (
-                      <div key={p.id} className="plant-card">
-                        <div className="plant-icon">{p.img}</div>
-                        <div className="plant-name">{p.name}</div>
-                        <div className="plant-meta">{p.size} • {p.sun} sun</div>
-                        <div className="plant-price">{fmt(p.price)}</div>
+                    {(designPlants.length > 0 ? designPlants : PLANTS_DB).slice(0, 6).map((p, i) => (
+                      <div key={p.id || i} className="plant-card">
+                        <div className="plant-icon">{p.img || "🌿"}</div>
+                        <div className="plant-name">{p.common_name || p.name}</div>
+                        <div className="plant-meta">{p.size || p.container_size || '3-gal'} • {p.sun_requirement || p.sun || 'full'} sun</div>
+                        {(p.price || p.unit_cost) && <div className="plant-price">{fmt(p.price || p.unit_cost)}</div>}
                       </div>
                     ))}
                   </div>
@@ -1035,112 +1312,103 @@ function NewProjectPage() {
             <div>
               <div className="chat-panel" style={{ height: 500 }}>
                 <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--filo-light)", fontWeight: 600, fontSize: 14 }}>
-                  💬 AI Design Assistant
+                  AI Design Assistant
                 </div>
                 <div className="chat-messages">
-                  <div className="chat-msg ai">
-                    Your design is ready! I've placed 8 plants following a naturalistic cottage style with layered heights. The Crape Myrtle anchors the design as a specimen tree, with Loropetalum and Indian Hawthorn providing mid-level structure.
-                  </div>
-                  <div className="chat-msg ai">
-                    You can drag plants to reposition them, or tell me what changes you'd like. Try: "Swap all Loropetalum for Knockout Roses" or "Add 3 more Gulf Muhly Grass to the right side."
-                  </div>
-                </div>
-                <div className="chat-input-bar">
-                  <input className="form-input" placeholder="Type a design change..." style={{ flex: 1 }} />
-                  <button className="btn btn-primary btn-sm">Send</button>
-                </div>
-              </div>
-
-              <div className="card" style={{ marginTop: 16 }}>
-                <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", fontSize: 16 }}>Revision History</h3></div>
-                <div className="card-body" style={{ padding: "12px 16px" }}>
-                  {["Initial AI Design", "Swapped 2 Loropetalum → Rose", "Added 3 Gulf Muhly"].map((rev, i) => (
-                    <div key={i} style={{ padding: "8px 0", borderBottom: "1px solid var(--filo-light)", display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                      <span>v{3 - i}: {rev}</span>
-                      <button className="btn btn-ghost btn-sm" style={{ padding: "2px 8px", fontSize: 11 }}>Revert</button>
+                  {chatMessages.map((msg, i) => (
+                    <div key={i} className={`chat-msg ${msg.role === 'user' ? 'user' : 'ai'}`}>
+                      {msg.text}
                     </div>
                   ))}
+                  {chatMessages.length === 0 && (
+                    <div className="chat-msg ai">
+                      Your design is ready for review. Tell me what changes you'd like — try "swap all shrubs for native species" or "add more color."
+                    </div>
+                  )}
+                </div>
+                <div className="chat-input-bar">
+                  <input className="form-input" placeholder="Type a design change..." style={{ flex: 1 }}
+                    value={chatInput} onChange={e => setChatInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleChatSend()} />
+                  <button className="btn btn-primary btn-sm" onClick={handleChatSend}>Send</button>
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* Step 8: Estimate */}
+        {/* Step 8: Estimate — REAL data */}
         {step === 8 && (
           <div className="scale-in" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
             <div className="card">
               <div className="card-header">
-                <h3 style={{ fontFamily: "var(--font-display)" }}>📋 Bill of Materials (Internal)</h3>
+                <h3 style={{ fontFamily: "var(--font-display)" }}>Bill of Materials (Internal)</h3>
               </div>
               <div className="card-body">
-                <table>
-                  <thead><tr><th>Plant</th><th>Size</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead>
-                  <tbody>
-                    {PLANTS_DB.slice(0, 6).map(p => {
-                      const qty = Math.floor(Math.random() * 5) + 1;
-                      return (
-                        <tr key={p.id}>
-                          <td>{p.img} {p.name}</td>
-                          <td>{p.size}</td>
-                          <td>{qty}</td>
-                          <td>{fmt(p.price)}</td>
-                          <td style={{ fontWeight: 600 }}>{fmt(p.price * qty)}</td>
+                {estimate?.line_items ? (
+                  <table>
+                    <thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead>
+                    <tbody>
+                      {estimate.line_items.filter(li => li.category === 'plant' || li.line_type === 'plant').map((li, i) => (
+                        <tr key={i}>
+                          <td>{li.description || li.name}</td>
+                          <td>{li.quantity}</td>
+                          <td>{fmt(li.unit_cost || li.unit_price)}</td>
+                          <td style={{ fontWeight: 600 }}>{fmt(li.total || (li.quantity * (li.unit_cost || li.unit_price)))}</td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div style={{ textAlign: "center", padding: 40, color: "var(--filo-grey)" }}>
+                    <p>Estimate data will appear here once generated.</p>
+                    {!estimate && <p style={{ fontSize: 12, marginTop: 8 }}>If generation failed, you can still proceed.</p>}
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="card">
               <div className="card-header">
-                <h3 style={{ fontFamily: "var(--font-display)" }}>💰 Customer Estimate</h3>
-                <span className="status-badge" style={{ background: "#FEF3C7", color: "#92400E" }}>Draft</span>
+                <h3 style={{ fontFamily: "var(--font-display)" }}>Customer Estimate</h3>
+                <span className="status-badge" style={{ background: estimateApproved ? "var(--filo-green-pale)" : "#FEF3C7", color: estimateApproved ? "var(--filo-green)" : "#92400E" }}>
+                  {estimateApproved ? "Approved" : "Draft"}
+                </span>
               </div>
               <div className="card-body">
-                <div style={{ textAlign: "center", marginBottom: 24, paddingBottom: 16, borderBottom: "2px solid var(--filo-green)" }}>
-                  <div style={{ fontSize: 24, fontWeight: 700, fontFamily: "var(--font-display)" }}>King's Garden Landscaping</div>
-                  <div style={{ fontSize: 12, color: "var(--filo-grey)" }}>Houston, TX • (713) 555-0100 • ISA Certified Arborist TX-4800A</div>
-                </div>
-
-                <div className="estimate-section">
-                  <h4>🌱 Plant Materials</h4>
-                  {PLANTS_DB.slice(0, 4).map(p => (
-                    <div className="estimate-row" key={p.id}>
-                      <span>{p.name} ({p.size}) × {Math.floor(Math.random() * 4) + 1}</span>
-                      <span style={{ fontWeight: 500 }}>{fmt(p.price * (Math.floor(Math.random() * 4) + 1))}</span>
+                {estimate ? (
+                  <>
+                    <div className="estimate-section">
+                      {(estimate.line_items || []).map((li, i) => (
+                        <div className="estimate-row" key={i}>
+                          <span>{li.description || li.name} {li.quantity > 1 ? `× ${li.quantity}` : ''}</span>
+                          <span style={{ fontWeight: 500 }}>{fmt(li.total || (li.quantity * (li.unit_cost || li.unit_price || 0)))}</span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-
-                <div className="estimate-section">
-                  <h4>🛠️ Labor & Services</h4>
-                  {[["Installation Labor", 1200], ["Soil Amendments (3 cy)", 285], ["Hardwood Mulch (4 cy)", 340], ["Steel Edging (60 lf)", 480], ["Delivery", 150], ["Removal & Disposal (lump)", 350]].map(([item, cost]) => (
-                    <div className="estimate-row" key={item}>
-                      <span>{item}</span>
-                      <span style={{ fontWeight: 500 }}>{fmt(cost)}</span>
+                    <div className="estimate-section" style={{ borderTop: "1px solid var(--filo-light)", paddingTop: 12 }}>
+                      {estimate.subtotal && <div className="estimate-row"><span>Subtotal</span><span>{fmt(estimate.subtotal)}</span></div>}
+                      {estimate.tax && <div className="estimate-row"><span>Tax</span><span>{fmt(estimate.tax)}</span></div>}
+                      <div className="estimate-row total"><span>Total</span><span className="estimate-total">{fmt(estimate.total || estimate.grand_total || 0)}</span></div>
                     </div>
-                  ))}
-                </div>
-
-                <div className="estimate-section" style={{ borderTop: "1px solid var(--filo-light)", paddingTop: 12 }}>
-                  <div className="estimate-row"><span>Subtotal</span><span>{fmt(3480)}</span></div>
-                  <div className="estimate-row"><span>Tax (8.25%)</span><span>{fmt(287)}</span></div>
-                  <div className="estimate-row total"><span>Total</span><span className="estimate-total">{fmt(3767)}</span></div>
-                </div>
-
+                  </>
+                ) : (
+                  <div style={{ textAlign: "center", padding: 40, color: "var(--filo-grey)" }}>
+                    Estimate will be generated from the design data.
+                  </div>
+                )}
                 <div style={{ marginTop: 24, display: "flex", gap: 12 }}>
-                  <button className="btn btn-primary btn-lg" style={{ flex: 1 }}>✅ Approve Estimate</button>
-                  <button className="btn btn-secondary">✏️ Edit</button>
+                  <button className="btn btn-primary btn-lg" style={{ flex: 1 }}
+                    onClick={() => setEstimateApproved(true)} disabled={estimateApproved}>
+                    {estimateApproved ? "Approved" : "Approve Estimate"}
+                  </button>
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* Step 9: Submittal */}
+        {/* Step 9: Submittal — REAL data */}
         {step === 9 && (
           <div className="scale-in">
             <div className="submittal-preview">
@@ -1148,87 +1416,68 @@ function NewProjectPage() {
                 <div style={{ fontSize: 48, marginBottom: 16 }}>🌿</div>
                 <h1>Landscape Design Proposal</h1>
                 <p style={{ fontFamily: "var(--font-display)", fontSize: 18, color: "var(--filo-grey)", marginBottom: 24 }}>
-                  Prepared for Johnson Residence
+                  Prepared for {project.clientName || "Client"}
                 </p>
                 <div style={{ fontSize: 14, color: "var(--filo-grey)" }}>
-                  <strong>King's Garden Landscaping</strong><br />
-                  Houston, TX • (713) 555-0100<br />
-                  ISA Certified Arborist TX-4800A
+                  {project.address}
                 </div>
-                <div style={{ marginTop: 16, fontSize: 13, color: "var(--filo-silver)" }}>March 28, 2026</div>
+                <div style={{ marginTop: 16, fontSize: 13, color: "var(--filo-silver)" }}>{new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
               </div>
 
-              <div className="submittal-section">
-                <h3>Scope of Work</h3>
-                <p style={{ lineHeight: 1.8, color: "var(--filo-slate)" }}>
-                  King's Garden Landscaping proposes a comprehensive landscape renovation for the front yard beds at 4521 River Oaks Blvd.
-                  The design embraces a naturalistic cottage aesthetic, integrating native and adapted species selected for the property's
-                  full-sun exposure and the Gulf Coast climate. Existing mature specimens in good condition will be preserved to maintain
-                  the established character of the landscape, while declining plantings will be removed and replaced with vigorous new material.
-                  The layered planting scheme positions low-profile groundcovers at the border, mid-height flowering shrubs through the
-                  center mass, and a signature Crape Myrtle specimen to anchor the composition and provide vertical interest. All plant
-                  material is specified at container sizes appropriate for immediate impact while allowing room for natural maturation.
-                </p>
-              </div>
+              {submittal?.narrative && (
+                <div className="submittal-section">
+                  <h3>Scope of Work</h3>
+                  <p style={{ lineHeight: 1.8, color: "var(--filo-slate)" }}>{submittal.narrative}</p>
+                </div>
+              )}
 
-              <div className="submittal-section">
-                <h3>Plant Profiles</h3>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
-                  {PLANTS_DB.slice(0, 4).map(p => (
-                    <div key={p.id} style={{ padding: 20, border: "1px solid var(--filo-light)", borderRadius: "var(--radius)" }}>
-                      <div style={{ fontSize: 40, marginBottom: 8 }}>{p.img}</div>
-                      <h4 style={{ fontFamily: "var(--font-display)", fontSize: 16, marginBottom: 4 }}>{p.name}</h4>
-                      <div style={{ fontSize: 12, color: "var(--filo-grey)", marginBottom: 8 }}>
-                        {p.bloom} • {p.water} water • {p.sun} sun
+              {(designPlants.length > 0) && (
+                <div className="submittal-section">
+                  <h3>Plant Profiles</h3>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+                    {designPlants.slice(0, 6).map((p, i) => (
+                      <div key={i} style={{ padding: 20, border: "1px solid var(--filo-light)", borderRadius: "var(--radius)" }}>
+                        <div style={{ fontSize: 40, marginBottom: 8 }}>{p.img || "🌿"}</div>
+                        <h4 style={{ fontFamily: "var(--font-display)", fontSize: 16, marginBottom: 4 }}>{p.common_name || p.name}</h4>
+                        <div style={{ fontSize: 12, color: "var(--filo-grey)", marginBottom: 8 }}>
+                          {p.bloom_season || ''} {p.water_requirement || ''} {p.sun_requirement || ''}
+                        </div>
+                        {p.description && <p style={{ fontSize: 13, fontStyle: "italic", color: "var(--filo-slate)", lineHeight: 1.6 }}>{p.description}</p>}
                       </div>
-                      <p style={{ fontSize: 13, fontStyle: "italic", color: "var(--filo-slate)", lineHeight: 1.6 }}>{p.desc}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="submittal-section">
-                <h3>Before & After</h3>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                  <div style={{ background: "linear-gradient(180deg, #87CEEB 0%, #8B7355 100%)", height: 200, borderRadius: "var(--radius)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: 600 }}>
-                    📷 Before
-                  </div>
-                  <div style={{ background: "linear-gradient(180deg, #87CEEB 0%, #6B8E5C 100%)", height: 200, borderRadius: "var(--radius)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: 600 }}>
-                    🎨 After (AI Render)
+                    ))}
                   </div>
                 </div>
-              </div>
+              )}
 
               <div style={{ textAlign: "center", paddingTop: 32, borderTop: "2px solid var(--filo-green)" }}>
-                <strong>King's Garden Landscaping</strong><br />
                 <span style={{ fontSize: 13, color: "var(--filo-grey)" }}>
-                  Licensed & Insured • ISA Certified Arborist TX-4800A • LI#25321
+                  Generated by FILO
                 </span>
               </div>
             </div>
             <div style={{ display: "flex", justifyContent: "center", gap: 12, marginTop: 24 }}>
-              <button className="btn btn-primary btn-lg">📥 Download PDF</button>
-              <button className="btn btn-secondary btn-lg">📧 Email to Client</button>
+              {submittal?.pdf_url && <a href={submittal.pdf_url} target="_blank" rel="noreferrer" className="btn btn-primary btn-lg">Download PDF</a>}
             </div>
           </div>
         )}
 
-        {/* Step 10: CRM Push */}
+        {/* Step 10: Complete */}
         {step === 10 && (
           <div className="card scale-in" style={{ maxWidth: 600, margin: "0 auto" }}>
             <div className="card-body" style={{ textAlign: "center", padding: 60 }}>
               <div style={{ fontSize: 64, marginBottom: 16 }}>✅</div>
               <h3 style={{ fontFamily: "var(--font-display)", fontSize: 28, marginBottom: 8 }}>Project Complete!</h3>
               <p style={{ color: "var(--filo-grey)", marginBottom: 32, maxWidth: 400, margin: "0 auto 32px" }}>
-                All documents generated and synced to your CRM.
+                All data has been saved to your FILO database.
               </p>
               <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 360, margin: "0 auto", textAlign: "left" }}>
                 {[
-                  ["✅", "Client profile created in Jobber"],
-                  ["✅", "Estimate uploaded to client notes"],
-                  ["✅", "Submittal PDF uploaded to client notes"],
-                  ["✅", "Before/After images attached"],
-                  ["✅", "Bill of Materials saved internally"],
+                  ["✅", `Client "${project.clientName}" created`],
+                  ["✅", `Project with ${Object.keys(areaMap).length} area(s) saved`],
+                  ["✅", `${Object.values(uploadedPhotos).flat().length || 0} photos uploaded`],
+                  ["✅", design ? "AI design generated" : "Design pending"],
+                  ["✅", estimate ? `Estimate: ${fmt(estimate.total || estimate.grand_total || 0)}` : "Estimate pending"],
+                  ["✅", submittal ? "Submittal generated" : "Submittal pending"],
                 ].map(([icon, text], i) => (
                   <div key={i} className="fade-in" style={{ display: "flex", gap: 12, alignItems: "center", padding: 12, background: "var(--filo-green-pale)", borderRadius: "var(--radius-sm)", animationDelay: `${i * 0.15}s` }}>
                     <span>{icon}</span>
@@ -1237,8 +1486,8 @@ function NewProjectPage() {
                 ))}
               </div>
               <div style={{ marginTop: 32, display: "flex", gap: 12, justifyContent: "center" }}>
-                <button className="btn btn-primary">📥 Download All</button>
-                <button className="btn btn-secondary">Open in CRM →</button>
+                {exportData?.downloadUrl && <a href={exportData.downloadUrl} className="btn btn-primary" target="_blank" rel="noreferrer">Download All</a>}
+                <button className="btn btn-secondary" onClick={() => setPage && setPage('projects')}>View Projects</button>
               </div>
             </div>
           </div>
