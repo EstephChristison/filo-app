@@ -2154,7 +2154,11 @@ function OnboardingWizard({ onComplete }) {
       setStep(s => s + 1);
     } catch (err) {
       console.error('Onboarding save error:', err);
-      setError(err.message);
+      // Don't block onboarding — save failed but let user continue
+      // They can update settings later from the Settings page
+      console.warn('Continuing onboarding despite save error');
+      setError(`Save failed (${err.message}) — you can update this later in Settings. Continuing...`);
+      setTimeout(() => { setError(null); setStep(s => s + 1); }, 2000);
     } finally {
       setSaving(false);
     }

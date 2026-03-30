@@ -59,11 +59,16 @@ async function apiFetch(path, options = {}) {
     delete headers['Content-Type'];
   }
 
-  let response = await fetch(url, {
-    ...options,
-    headers,
-    body: options.body instanceof FormData ? options.body : (options.body ? JSON.stringify(options.body) : undefined),
-  });
+  let response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers,
+      body: options.body instanceof FormData ? options.body : (options.body ? JSON.stringify(options.body) : undefined),
+    });
+  } catch (networkErr) {
+    throw new Error(`Network error: Could not reach server. Check your connection. (${networkErr.message})`);
+  }
 
   // Handle 401 — try to refresh token once
   if (response.status === 401 && getRefreshToken()) {
