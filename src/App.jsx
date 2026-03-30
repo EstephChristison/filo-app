@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
-import { generateDesign, chatDesignCommand, isConfigured as isAIConfigured } from "./services/ai";
 
 // ═══════════════════════════════════════════════════════════════════
 // FILO — AI-Powered Landscape Design Platform
@@ -692,162 +691,10 @@ function NewProjectPage() {
     estimateApproved: false,
   });
 
-  // ─── AI Design State (Step 6) ──────────────────────────────────
-  const [designStatus, setDesignStatus] = useState("idle"); // idle | generating | done | error
-  const [designProgress, setDesignProgress] = useState(0);
-  const [designProgressLabel, setDesignProgressLabel] = useState("");
-  const [designResult, setDesignResult] = useState(null);
-  const [designError, setDesignError] = useState(null);
-  const designRunRef = useRef(false);
-
-  // ─── Chat State (Step 7) ──────────────────────────────────────
-  const [chatMessages, setChatMessages] = useState([]);
-  const [chatInput, setChatInput] = useState("");
-  const [chatLoading, setChatLoading] = useState(false);
-  const chatEndRef = useRef(null);
-
   const totalSteps = 10;
   const stepTitles = ["Client Info", "Property Areas", "Photo Upload", "Plant Detection", "Design Options", "AI Design", "Review & Adjust", "Estimate", "Submittal", "CRM Push"];
 
   const updateProject = (updates) => setProject(p => ({ ...p, ...updates }));
-
-  // ─── Kick off AI design generation when user enters Step 6 ────
-  useEffect(() => {
-    if (step !== 6 || designRunRef.current || designStatus === "done") return;
-    if (!isAIConfigured()) {
-      // No API key — keep showing the mock UI
-      setDesignStatus("idle");
-      return;
-    }
-
-    designRunRef.current = true;
-    setDesignStatus("generating");
-    setDesignProgress(10);
-    setDesignProgressLabel("Analyzing photos and site conditions...");
-
-    // Map the project style pill to a slug the prompt expects
-    const styleMap = {
-      "Formal / Symmetrical": "formal",
-      "Naturalistic / Cottage": "naturalistic",
-      "Modern / Minimalist": "modern",
-      "Tropical": "tropical",
-      "Desert / Xeriscape": "xeriscape",
-    };
-
-    const runDesign = async () => {
-      try {
-        setDesignProgress(25);
-        setDesignProgressLabel("Selecting plants from your inventory...");
-
-        await new Promise((r) => setTimeout(r, 800)); // brief pause so user sees progress
-        setDesignProgress(50);
-        setDesignProgressLabel("Calculating spacing and layering...");
-
-        const result = await generateDesign({
-          sunExposure: project.sun || "Full Sun",
-          designStyle: styleMap[project.style] || "naturalistic",
-          specialRequests: project.specialRequests || "",
-          availablePlants: PLANTS_DB,
-          existingPlantsKeep: (project.existingPlants || []).filter((p) => p.status === "keep"),
-          existingPlantsRemove: (project.existingPlants || []).filter((p) => p.status === "remove"),
-          location: { city: "Houston", state: "TX", zone: "9a" },
-          lighting: project.lighting,
-          hardscape: project.hardscape,
-        });
-
-        setDesignProgress(90);
-        setDesignProgressLabel("Finalizing design...");
-        await new Promise((r) => setTimeout(r, 500));
-
-        if (result.success && result.data) {
-          setDesignResult(result.data);
-          setDesignStatus("done");
-          setDesignProgress(100);
-          setDesignProgressLabel("Design complete!");
-
-          // Seed the chat with an initial AI message
-          setChatMessages([
-            {
-              role: "ai",
-              text: result.data.design_summary
-                || "Your design is ready! I've placed plants following your style preferences with layered heights. You can drag plants to reposition them, or tell me what changes you'd like.",
-            },
-            {
-              role: "ai",
-              text: 'Try commands like "Swap all Loropetalum for Knockout Roses" or "Add 3 more Gulf Muhly Grass to the right side."',
-            },
-          ]);
-        } else {
-          throw new Error(result.error || "Design generation returned no data");
-        }
-      } catch (err) {
-        console.error("[FILO] Design generation failed, falling back to mock:", err);
-        setDesignError(err.message);
-        setDesignStatus("error");
-        // Fallback: show mock data anyway
-        setDesignProgress(100);
-        setDesignProgressLabel("Showing demo design (API unavailable)");
-        setChatMessages([
-          { role: "ai", text: "Your design is ready! I've placed 8 plants following a naturalistic cottage style with layered heights. The Crape Myrtle anchors the design as a specimen tree, with Loropetalum and Indian Hawthorn providing mid-level structure." },
-          { role: "ai", text: 'You can drag plants to reposition them, or tell me what changes you\'d like. Try: "Swap all Loropetalum for Knockout Roses" or "Add 3 more Gulf Muhly Grass to the right side."' },
-        ]);
-      }
-    };
-
-    runDesign();
-  }, [step]);
-
-  // ─── Auto-scroll chat when new messages arrive ────────────────
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMessages]);
-
-  // ─── Send a chat command to the AI ────────────────────────────
-  const handleChatSend = async () => {
-    const msg = chatInput.trim();
-    if (!msg || chatLoading) return;
-
-    setChatInput("");
-    setChatMessages((prev) => [...prev, { role: "user", text: msg }]);
-    setChatLoading(true);
-
-    try {
-      if (!isAIConfigured()) throw new Error("API key not set");
-
-      // Determine current plants: use AI result if available, else fall back to PLANTS_DB
-      const currentPlants = designResult?.plant_placements
-        ? designResult.plant_placements.map((p) => ({
-            id: p.plant_library_id,
-            name: p.common_name,
-            quantity: p.quantity,
-            position_x: p.position_x,
-            position_y: p.position_y,
-            size: p.container_size,
-          }))
-        : PLANTS_DB.slice(0, 8);
-
-      const result = await chatDesignCommand(msg, {
-        currentPlants,
-        availablePlants: PLANTS_DB,
-      });
-
-      setChatMessages((prev) => [
-        ...prev,
-        { role: "ai", text: result.message },
-        ...(result.warnings?.length
-          ? [{ role: "ai", text: `\u26A0\uFE0F ${result.warnings.join(". ")}` }]
-          : []),
-      ]);
-    } catch (err) {
-      console.error("[FILO] Chat error:", err);
-      setChatMessages((prev) => [
-        ...prev,
-        { role: "ai", text: "Sorry, I had trouble processing that. Could you rephrase your request?" },
-      ]);
-    } finally {
-      setChatLoading(false);
-    }
-  };
 
   return (
     <div className="fade-in">
@@ -1093,24 +940,16 @@ function NewProjectPage() {
           <div className="scale-in">
             <div className="card" style={{ marginBottom: 24 }}>
               <div className="card-body" style={{ textAlign: "center", padding: 60 }}>
-                <div style={{ fontSize: 64, marginBottom: 16 }}>{designStatus === "done" ? "✅" : designStatus === "error" ? "⚠️" : "🌿"}</div>
-                <h3 style={{ fontFamily: "var(--font-display)", fontSize: 24, marginBottom: 8 }}>
-                  {designStatus === "done" ? "Design Complete" : designStatus === "error" ? "Design Ready (Demo Mode)" : "AI Design in Progress"}
-                </h3>
+                <div style={{ fontSize: 64, marginBottom: 16 }}>🌿</div>
+                <h3 style={{ fontFamily: "var(--font-display)", fontSize: 24, marginBottom: 8 }}>AI Design in Progress</h3>
                 <p style={{ color: "var(--filo-grey)", marginBottom: 24, maxWidth: 500, margin: "0 auto 24px" }}>
-                  {designStatus === "generating"
-                    ? "FILO is analyzing the uploaded photos, selecting plants based on sun exposure, architecture, and your style preferences..."
-                    : designStatus === "done"
-                    ? (designResult?.design_rationale || "Your AI-generated landscape design is ready for review.")
-                    : designStatus === "error"
-                    ? "Could not reach the AI service. Showing demo design so you can continue."
-                    : "Click Continue to generate your design, or wait a moment..."}
+                  FILO is analyzing the uploaded photos, selecting plants based on sun exposure, architecture, and your style preferences...
                 </p>
                 <div className="progress-bar" style={{ maxWidth: 400, margin: "0 auto", marginBottom: 12 }}>
-                  <div className="progress-fill" style={{ width: `${designProgress}%`, transition: "width 0.6s ease" }}></div>
+                  <div className="progress-fill" style={{ width: "75%" }}></div>
                 </div>
                 <div style={{ fontSize: 13, color: "var(--filo-grey)" }}>
-                  {designProgressLabel || "Selecting plants \u2022 Calculating spacing \u2022 Rendering photorealistic design"}
+                  Selecting plants • Calculating spacing • Rendering photorealistic design
                 </div>
               </div>
             </div>
@@ -1121,57 +960,22 @@ function NewProjectPage() {
                 <div className="design-canvas">
                   <div className="house"></div>
                   <div className="bed-area">
-                    {/* Show AI-generated placements if available, else fall back to mock */}
-                    {(designResult?.plant_placements || []).length > 0
-                      ? designResult.plant_placements.map((placement, i) => {
-                          // Match to a PLANTS_DB entry for the emoji icon
-                          const match = PLANTS_DB.find(
-                            (p) => p.id === Number(placement.plant_library_id) || p.name.toLowerCase().includes((placement.common_name || "").split(" ")[0].toLowerCase())
-                          );
-                          const icon = match?.img || "🌱";
-                          const isTree = (placement.layer === "background") || (match?.type === "tree");
-                          const isGround = (placement.layer === "foreground") || (match?.type === "groundcover");
-                          return (
-                            <div key={i} className="design-plant" style={{
-                              left: `${Math.max(5, Math.min(90, placement.position_x || 50))}%`,
-                              top: `${Math.max(5, Math.min(85, placement.position_y || 50))}%`,
-                              fontSize: isTree ? 36 : isGround ? 16 : 24,
-                              zIndex: placement.z_index || i,
-                            }} title={`${placement.common_name} (${placement.container_size}) x${placement.quantity || 1}`}>
-                              {icon}
-                            </div>
-                          );
-                        })
-                      : PLANTS_DB.slice(0, 8).map((plant, i) => (
-                          <div key={plant.id} className="design-plant" style={{
-                            left: `${10 + (i * 12)}%`, top: `${15 + (i % 3) * 20}%`,
-                            fontSize: plant.type === "tree" ? 36 : plant.type === "groundcover" ? 16 : 24,
-                          }}>
-                            {plant.img}
-                          </div>
-                        ))
-                    }
+                    {PLANTS_DB.slice(0, 8).map((plant, i) => (
+                      <div key={plant.id} className="design-plant" style={{
+                        left: `${10 + (i * 12)}%`, top: `${15 + (i % 3) * 20}%`,
+                        fontSize: plant.type === "tree" ? 36 : plant.type === "groundcover" ? 16 : 24,
+                      }}>
+                        {plant.img}
+                      </div>
+                    ))}
                   </div>
                 </div>
                 <div style={{ marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {/* Plant palette summary */}
-                  {(designResult?.plant_placements || []).length > 0
-                    ? designResult.plant_placements.map((p, i) => {
-                        const match = PLANTS_DB.find(
-                          (db) => db.id === Number(p.plant_library_id) || db.name.toLowerCase().includes((p.common_name || "").split(" ")[0].toLowerCase())
-                        );
-                        return (
-                          <span key={i} style={{ fontSize: 12, background: "var(--filo-offwhite)", padding: "4px 10px", borderRadius: 12 }}>
-                            {match?.img || "🌱"} {p.common_name} x{p.quantity || 1}
-                          </span>
-                        );
-                      })
-                    : PLANTS_DB.slice(0, 6).map(p => (
-                        <span key={p.id} style={{ fontSize: 12, background: "var(--filo-offwhite)", padding: "4px 10px", borderRadius: 12 }}>
-                          {p.img} {p.name.split("'")[0].trim()} x {Math.floor(Math.random() * 5) + 1}
-                        </span>
-                      ))
-                  }
+                  {PLANTS_DB.slice(0, 6).map(p => (
+                    <span key={p.id} style={{ fontSize: 12, background: "var(--filo-offwhite)", padding: "4px 10px", borderRadius: 12 }}>
+                      {p.img} {p.name.split("'")[0].trim()} × {Math.floor(Math.random() * 5) + 1}
+                    </span>
+                  ))}
                 </div>
               </div>
             </div>
@@ -1194,42 +998,19 @@ function NewProjectPage() {
                   <div className="design-canvas" style={{ minHeight: 450 }}>
                     <div className="house"></div>
                     <div className="bed-area">
-                      {/* Show AI placements if available, else mock */}
-                      {(designResult?.plant_placements || []).length > 0
-                        ? designResult.plant_placements.map((placement, i) => {
-                            const match = PLANTS_DB.find(
-                              (p) => p.id === Number(placement.plant_library_id) || p.name.toLowerCase().includes((placement.common_name || "").split(" ")[0].toLowerCase())
-                            );
-                            const icon = match?.img || "🌱";
-                            const isTree = (placement.layer === "background") || (match?.type === "tree");
-                            const isGround = (placement.layer === "foreground") || (match?.type === "groundcover");
-                            return (
-                              <div key={i} className="design-plant"
-                                title={`Drag to reposition: ${placement.common_name} (${placement.container_size}) x${placement.quantity || 1}`}
-                                style={{
-                                  left: `${Math.max(5, Math.min(90, placement.position_x || 50))}%`,
-                                  top: `${Math.max(5, Math.min(85, placement.position_y || 50))}%`,
-                                  fontSize: isTree ? 36 : isGround ? 16 : 24,
-                                  zIndex: placement.z_index || i,
-                                }}>
-                                {icon}
-                              </div>
-                            );
-                          })
-                        : PLANTS_DB.slice(0, 8).map((plant, i) => (
-                            <div key={plant.id} className="design-plant" title={`Drag to reposition: ${plant.name}`}
-                              style={{
-                                left: `${8 + (i * 12)}%`, top: `${10 + (i % 3) * 25}%`,
-                                fontSize: plant.type === "tree" ? 36 : plant.type === "groundcover" ? 16 : 24,
-                              }}>
-                              {plant.img}
-                            </div>
-                          ))
-                      }
+                      {PLANTS_DB.slice(0, 8).map((plant, i) => (
+                        <div key={plant.id} className="design-plant" title={`Drag to reposition: ${plant.name}`}
+                          style={{
+                            left: `${8 + (i * 12)}%`, top: `${10 + (i % 3) * 25}%`,
+                            fontSize: plant.type === "tree" ? 36 : plant.type === "groundcover" ? 16 : 24,
+                          }}>
+                          {plant.img}
+                        </div>
+                      ))}
                     </div>
                   </div>
                   <p style={{ fontSize: 12, color: "var(--filo-grey)", marginTop: 8, textAlign: "center" }}>
-                    Drag plants to reposition - Click to select - Desktop only
+                    🖱️ Drag plants to reposition • Click to select • Desktop only
                   </p>
                 </div>
               </div>
@@ -1242,7 +1023,7 @@ function NewProjectPage() {
                       <div key={p.id} className="plant-card">
                         <div className="plant-icon">{p.img}</div>
                         <div className="plant-name">{p.name}</div>
-                        <div className="plant-meta">{p.size} - {p.sun} sun</div>
+                        <div className="plant-meta">{p.size} • {p.sun} sun</div>
                         <div className="plant-price">{fmt(p.price)}</div>
                       </div>
                     ))}
@@ -1253,43 +1034,27 @@ function NewProjectPage() {
 
             <div>
               <div className="chat-panel" style={{ height: 500 }}>
-                <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--filo-light)", fontWeight: 600, fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}>
-                  AI Design Assistant
-                  {chatLoading && <div className="spinner" style={{ width: 16, height: 16 }}></div>}
+                <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--filo-light)", fontWeight: 600, fontSize: 14 }}>
+                  💬 AI Design Assistant
                 </div>
                 <div className="chat-messages">
-                  {chatMessages.map((msg, i) => (
-                    <div key={i} className={`chat-msg ${msg.role === "user" ? "user" : "ai"}`}>
-                      {msg.text}
-                    </div>
-                  ))}
-                  {chatLoading && (
-                    <div className="chat-msg ai" style={{ opacity: 0.6 }}>
-                      <span style={{ animation: "pulse 1.2s infinite" }}>Thinking...</span>
-                    </div>
-                  )}
-                  <div ref={chatEndRef} />
+                  <div className="chat-msg ai">
+                    Your design is ready! I've placed 8 plants following a naturalistic cottage style with layered heights. The Crape Myrtle anchors the design as a specimen tree, with Loropetalum and Indian Hawthorn providing mid-level structure.
+                  </div>
+                  <div className="chat-msg ai">
+                    You can drag plants to reposition them, or tell me what changes you'd like. Try: "Swap all Loropetalum for Knockout Roses" or "Add 3 more Gulf Muhly Grass to the right side."
+                  </div>
                 </div>
                 <div className="chat-input-bar">
-                  <input
-                    className="form-input"
-                    placeholder="Type a design change..."
-                    style={{ flex: 1 }}
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") handleChatSend(); }}
-                    disabled={chatLoading}
-                  />
-                  <button className="btn btn-primary btn-sm" onClick={handleChatSend} disabled={chatLoading || !chatInput.trim()}>
-                    {chatLoading ? "..." : "Send"}
-                  </button>
+                  <input className="form-input" placeholder="Type a design change..." style={{ flex: 1 }} />
+                  <button className="btn btn-primary btn-sm">Send</button>
                 </div>
               </div>
 
               <div className="card" style={{ marginTop: 16 }}>
                 <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", fontSize: 16 }}>Revision History</h3></div>
                 <div className="card-body" style={{ padding: "12px 16px" }}>
-                  {["Initial AI Design", "Swapped 2 Loropetalum \u2192 Rose", "Added 3 Gulf Muhly"].map((rev, i) => (
+                  {["Initial AI Design", "Swapped 2 Loropetalum → Rose", "Added 3 Gulf Muhly"].map((rev, i) => (
                     <div key={i} style={{ padding: "8px 0", borderBottom: "1px solid var(--filo-light)", display: "flex", justifyContent: "space-between", fontSize: 13 }}>
                       <span>v{3 - i}: {rev}</span>
                       <button className="btn btn-ghost btn-sm" style={{ padding: "2px 8px", fontSize: 11 }}>Revert</button>
@@ -1921,9 +1686,26 @@ function TemplatesPage() {
 }
 
 // ─── Login Page ──────────────────────────────────────────────────
-function LoginPage({ onLogin }) {
-  const [email, setEmail] = useState("esteph@kingsgarden.com");
+function LoginPage({ onLogin, onShowRegister }) {
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async () => {
+    if (!email || !password) { setError("Email and password required"); return; }
+    setLoading(true);
+    setError("");
+    try {
+      const mod = await import('./api.js');
+      const result = await mod.auth.login(email, password);
+      onLogin(result.user);
+    } catch (err) {
+      setError(err.message || "Login failed. Check your credentials.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="login-page">
@@ -1943,17 +1725,116 @@ function LoginPage({ onLogin }) {
         <div className="login-card">
           <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, marginBottom: 4 }}>Welcome back</h2>
           <p style={{ fontSize: 14, color: "var(--filo-grey)", marginBottom: 32 }}>Sign in to your FILO workspace</p>
+          {error && <div style={{ background: "#FEE2E2", color: "#DC2626", padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 16 }}>{error}</div>}
           <div className="form-group">
             <label className="form-label">Email</label>
-            <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} />
+            <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleLogin()} placeholder="you@company.com" />
           </div>
           <div className="form-group">
             <label className="form-label">Password</label>
-            <input className="form-input" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} />
+            <input className="form-input" type="password" placeholder="••••••••" value={password}
+              onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} />
           </div>
-          <button className="btn btn-primary btn-lg" style={{ width: "100%", marginBottom: 16 }} onClick={onLogin}>Sign In</button>
+          <button className="btn btn-primary btn-lg" style={{ width: "100%", marginBottom: 16, opacity: loading ? 0.6 : 1 }}
+            onClick={handleLogin} disabled={loading}>
+            {loading ? "Signing in..." : "Sign In"}
+          </button>
           <p style={{ fontSize: 13, color: "var(--filo-grey)", textAlign: "center" }}>
-            New to FILO? <span style={{ color: "var(--filo-green)", cursor: "pointer", fontWeight: 500 }}>Start your free trial →</span>
+            New to FILO? <span style={{ color: "var(--filo-green)", cursor: "pointer", fontWeight: 500 }} onClick={onShowRegister}>Start your free trial →</span>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Register Page ───────────────────────────────────────────────
+function RegisterPage({ onRegister, onShowLogin }) {
+  const [form, setForm] = useState({ companyName: "", firstName: "", lastName: "", email: "", phone: "", password: "", confirmPassword: "" });
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const update = (field, val) => setForm(f => ({ ...f, [field]: val }));
+
+  const handleRegister = async () => {
+    if (!form.companyName || !form.firstName || !form.lastName || !form.email || !form.password) {
+      setError("All fields except phone are required"); return;
+    }
+    if (form.password.length < 8) { setError("Password must be at least 8 characters"); return; }
+    if (form.password !== form.confirmPassword) { setError("Passwords don't match"); return; }
+    setLoading(true);
+    setError("");
+    try {
+      const mod = await import('./api.js');
+      const result = await mod.auth.register({
+        companyName: form.companyName, firstName: form.firstName, lastName: form.lastName,
+        email: form.email, phone: form.phone, password: form.password,
+      });
+      onRegister(result.user);
+    } catch (err) {
+      setError(err.message || "Registration failed.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="login-page">
+      <div className="login-left">
+        <div style={{ maxWidth: 480, textAlign: "center" }}>
+          <div style={{ fontSize: 64, marginBottom: 16 }}>🌿</div>
+          <h1 style={{ fontFamily: "var(--font-display)", fontSize: 48, marginBottom: 16, lineHeight: 1.1 }}>FILO</h1>
+          <p style={{ fontSize: 20, opacity: 0.8, fontFamily: "var(--font-display)" }}>Start Your 14-Day Free Trial</p>
+          <p style={{ fontSize: 15, opacity: 0.5, marginTop: 8, maxWidth: 360, margin: "8px auto 0" }}>
+            No credit card required. Full access to AI design, estimates, and submittals.
+          </p>
+        </div>
+      </div>
+      <div className="login-right">
+        <div className="login-card" style={{ maxWidth: 420 }}>
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, marginBottom: 4 }}>Create your account</h2>
+          <p style={{ fontSize: 14, color: "var(--filo-grey)", marginBottom: 24 }}>Get started in 60 seconds</p>
+          {error && <div style={{ background: "#FEE2E2", color: "#DC2626", padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 16 }}>{error}</div>}
+          <div className="form-group">
+            <label className="form-label">Company Name *</label>
+            <input className="form-input" placeholder="King's Garden Landscaping" value={form.companyName} onChange={e => update("companyName", e.target.value)} />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="form-group">
+              <label className="form-label">First Name *</label>
+              <input className="form-input" placeholder="Esteph" value={form.firstName} onChange={e => update("firstName", e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Last Name *</label>
+              <input className="form-input" placeholder="Christison" value={form.lastName} onChange={e => update("lastName", e.target.value)} />
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Email *</label>
+            <input className="form-input" type="email" placeholder="you@company.com" value={form.email} onChange={e => update("email", e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Phone</label>
+            <input className="form-input" type="tel" placeholder="(713) 555-0100" value={form.phone} onChange={e => update("phone", e.target.value)} />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="form-group">
+              <label className="form-label">Password *</label>
+              <input className="form-input" type="password" placeholder="Min 8 characters" value={form.password} onChange={e => update("password", e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Confirm *</label>
+              <input className="form-input" type="password" placeholder="Confirm password" value={form.confirmPassword}
+                onChange={e => update("confirmPassword", e.target.value)} onKeyDown={e => e.key === 'Enter' && handleRegister()} />
+            </div>
+          </div>
+          <button className="btn btn-primary btn-lg" style={{ width: "100%", marginBottom: 16, opacity: loading ? 0.6 : 1 }}
+            onClick={handleRegister} disabled={loading}>
+            {loading ? "Creating account..." : "Start Free Trial"}
+          </button>
+          <p style={{ fontSize: 13, color: "var(--filo-grey)", textAlign: "center" }}>
+            Already have an account? <span style={{ color: "var(--filo-green)", cursor: "pointer", fontWeight: 500 }} onClick={onShowLogin}>Sign in →</span>
           </p>
         </div>
       </div>
@@ -2095,9 +1976,59 @@ function OnboardingWizard({ onComplete }) {
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════════
 export default function App() {
-  const [view, setView] = useState("login"); // login | onboarding | app
+  const [view, setView] = useState("loading"); // loading | login | register | onboarding | app
+  const [user, setUser] = useState(null);
   const [page, setPage] = useState("dashboard");
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Check for existing session on mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const mod = await import('./api.js');
+        if (mod.auth.isLoggedIn()) {
+          const storedUser = mod.auth.getUser();
+          setUser(storedUser);
+          // Check if onboarding is complete
+          try {
+            const companyData = await mod.company.get();
+            if (!companyData.onboarding_completed) {
+              setView("onboarding");
+            } else {
+              setView("app");
+            }
+          } catch {
+            // If company fetch fails, go to app anyway (might be CORS or backend issue)
+            setView("app");
+          }
+        } else {
+          setView("login");
+        }
+      } catch {
+        setView("login");
+      }
+    };
+    checkAuth();
+  }, []);
+
+  const handleLogin = (userData) => {
+    setUser(userData);
+    setView("app"); // Skip onboarding check for login (they already completed it)
+  };
+
+  const handleRegister = (userData) => {
+    setUser(userData);
+    setView("onboarding"); // New users always go to onboarding
+  };
+
+  const handleLogout = async () => {
+    try {
+      const mod = await import('./api.js');
+      await mod.auth.logout();
+    } catch {}
+    setUser(null);
+    setView("login");
+  };
 
   const pages = {
     dashboard: <DashboardPage setPage={setPage} />,
@@ -2114,10 +2045,29 @@ export default function App() {
     team: <TeamPage />,
   };
 
+  if (view === "loading") return (
+    <>
+      <style>{STYLES}</style>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--filo-bg)" }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>🌿</div>
+          <p style={{ fontSize: 14, color: "var(--filo-grey)" }}>Loading FILO...</p>
+        </div>
+      </div>
+    </>
+  );
+
   if (view === "login") return (
     <>
       <style>{STYLES}</style>
-      <LoginPage onLogin={() => setView("app")} />
+      <LoginPage onLogin={handleLogin} onShowRegister={() => setView("register")} />
+    </>
+  );
+
+  if (view === "register") return (
+    <>
+      <style>{STYLES}</style>
+      <RegisterPage onRegister={handleRegister} onShowLogin={() => setView("login")} />
     </>
   );
 
@@ -2131,14 +2081,16 @@ export default function App() {
   return (
     <>
       <style>{STYLES}</style>
-      <div className="app-layout">
-        <Sidebar page={page} setPage={setPage} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
-        {mobileOpen && <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 45 }} onClick={() => setMobileOpen(false)} />}
-        <div className={cn("main-content")}>
-          <TopBar page={page} setMobileOpen={setMobileOpen} />
-          {pages[page] || <DashboardPage setPage={setPage} />}
+      <AppContext.Provider value={{ user, setPage, handleLogout }}>
+        <div className="app-layout">
+          <Sidebar page={page} setPage={setPage} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
+          {mobileOpen && <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 45 }} onClick={() => setMobileOpen(false)} />}
+          <div className={cn("main-content")}>
+            <TopBar page={page} setMobileOpen={setMobileOpen} />
+            {pages[page] || <DashboardPage setPage={setPage} />}
+          </div>
         </div>
-      </div>
+      </AppContext.Provider>
     </>
   );
 }
