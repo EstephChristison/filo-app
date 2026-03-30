@@ -2262,11 +2262,42 @@ function OnboardingWizard({ onComplete }) {
         )}
         {step === 3 && (
           <div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
               <div className="form-group"><label className="form-label">City</label><input className="form-input" placeholder="Houston" value={co.city} onChange={e => update('city', e.target.value)} /></div>
               <div className="form-group"><label className="form-label">State</label><input className="form-input" placeholder="TX" value={co.state} onChange={e => update('state', e.target.value)} /></div>
+              <div className="form-group">
+                <label className="form-label">ZIP Code</label>
+                <input className="form-input" placeholder="77005" maxLength={5}
+                  onChange={async (e) => {
+                    const zip = e.target.value.replace(/\D/g, '');
+                    e.target.value = zip;
+                    if (zip.length === 5) {
+                      try {
+                        const res = await fetch(`https://phzmapi.org/${zip}.json`);
+                        if (res.ok) {
+                          const data = await res.json();
+                          if (data.zone) update('usda_zone', data.zone);
+                        }
+                      } catch (err) { console.log('Zone lookup failed:', err.message); }
+                    }
+                  }} />
+              </div>
             </div>
-            <div className="form-group"><label className="form-label">USDA Zone</label><input className="form-input" placeholder="e.g. 9a" value={co.usda_zone} onChange={e => update('usda_zone', e.target.value)} /></div>
+            <div className="form-group">
+              <label className="form-label">USDA Hardiness Zone</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <input className="form-input" style={{ maxWidth: 100 }} value={co.usda_zone} readOnly
+                  placeholder="..." />
+                {co.usda_zone && (
+                  <span style={{ fontSize: 13, color: "var(--filo-green)", fontWeight: 600 }}>
+                    Zone {co.usda_zone} detected
+                  </span>
+                )}
+                {!co.usda_zone && (
+                  <span style={{ fontSize: 12, color: "var(--filo-silver)" }}>Enter ZIP code to auto-detect</span>
+                )}
+              </div>
+            </div>
             <div className="form-group">
               <label className="form-label">Default Design Style</label>
               <div className="pill-group">
