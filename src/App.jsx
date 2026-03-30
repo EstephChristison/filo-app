@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
+import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
 
 // ═══════════════════════════════════════════════════════════════════
 // FILO — AI-Powered Landscape Design Platform
