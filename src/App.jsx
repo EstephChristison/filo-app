@@ -1,0 +1,2144 @@
+import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
+import { generateDesign, chatDesignCommand, isConfigured as isAIConfigured } from "./services/ai";
+
+// ═══════════════════════════════════════════════════════════════════
+// FILO — AI-Powered Landscape Design Platform
+// Complete SaaS Application
+// ═══════════════════════════════════════════════════════════════════
+
+// ─── Context & State Management ──────────────────────────────────
+const AppContext = createContext(null);
+
+const useApp = () => useContext(AppContext);
+
+// ─── Mock Data ───────────────────────────────────────────────────
+const PLANTS_DB = [
+  { id: 1, name: "Loropetalum 'Purple Diamond'", type: "shrub", size: "3-gal", sun: "full", mature_h: "6ft", mature_w: "5ft", bloom: "Pink, Spring", water: "Moderate", price: 28.50, img: "🌸", desc: "Elegant weeping form with burgundy foliage and ribbon-like fuchsia blooms that cascade in spring." },
+  { id: 2, name: "Indian Hawthorn 'Clara'", type: "shrub", size: "3-gal", sun: "full", mature_h: "4ft", mature_w: "4ft", bloom: "White/Pink, Spring", water: "Low", price: 22.00, img: "🌺", desc: "Compact evergreen with glossy leaves and delicate star-shaped flowers, thriving in Houston's warmth." },
+  { id: 3, name: "Gulf Muhly Grass", type: "ornamental_grass", size: "1-gal", sun: "full", mature_h: "4ft", mature_w: "3ft", bloom: "Pink plumes, Fall", water: "Low", price: 12.50, img: "🌾", desc: "A Texas native with ethereal pink cloud-like plumes that catch autumn light like spun cotton candy." },
+  { id: 4, name: "Dwarf Yaupon Holly", type: "shrub", size: "3-gal", sun: "full/partial", mature_h: "5ft", mature_w: "5ft", bloom: "Evergreen", water: "Low", price: 24.00, img: "🌿", desc: "Dense, naturally mounding holly that anchors any design with year-round deep green structure." },
+  { id: 5, name: "Knockout Rose 'Double Red'", type: "shrub", size: "3-gal", sun: "full", mature_h: "4ft", mature_w: "4ft", bloom: "Red, Continuous", water: "Moderate", price: 26.00, img: "🌹", desc: "Relentless bloomer delivering waves of velvety red roses from spring through first frost." },
+  { id: 6, name: "Agapanthus 'Blue Storm'", type: "perennial", size: "1-gal", sun: "full/partial", mature_h: "3ft", mature_w: "2ft", bloom: "Blue, Summer", water: "Low", price: 14.00, img: "💙", desc: "Dramatic globe-shaped clusters of midnight blue trumpet flowers on sturdy stalks." },
+  { id: 7, name: "Asiatic Jasmine", type: "groundcover", size: "1-gal", sun: "partial/shade", mature_h: "1ft", mature_w: "spreading", bloom: "Evergreen groundcover", water: "Low", price: 8.50, img: "🍃", desc: "Dense, cascading groundcover that weaves a living carpet of dark, glossy foliage." },
+  { id: 8, name: "Ligustrum 'Sunshine'", type: "shrub", size: "5-gal", sun: "full", mature_h: "6ft", mature_w: "4ft", bloom: "Yellow foliage, Evergreen", water: "Moderate", price: 38.00, img: "✨", desc: "Electric chartreuse foliage that illuminates shaded borders and adds year-round golden glow." },
+  { id: 9, name: "Star Jasmine", type: "vine", size: "3-gal", sun: "full/partial", mature_h: "20ft", mature_w: "climbing", bloom: "White, Spring", water: "Moderate", price: 24.00, img: "⭐", desc: "Intensely fragrant white pinwheel flowers drift their perfume across warm evening gardens." },
+  { id: 10, name: "Crape Myrtle 'Natchez'", type: "tree", size: "15-gal", sun: "full", mature_h: "25ft", mature_w: "20ft", bloom: "White, Summer", water: "Low", price: 145.00, img: "🌳", desc: "Sculptural cinnamon bark and cascading white summer panicles define this iconic Southern specimen." },
+];
+
+const MOCK_PROJECTS = [
+  { id: "PRJ-001", client: "Johnson Residence", address: "4521 River Oaks Blvd", status: "design_review", areas: ["Front Yard", "Side Yard"], date: "2026-03-25", total: 12450 },
+  { id: "PRJ-002", client: "Chen Family Estate", address: "1892 Memorial Dr", status: "estimate_approved", areas: ["Front Yard", "Back Yard"], date: "2026-03-22", total: 28900 },
+  { id: "PRJ-003", client: "Martinez Property", address: "7744 Tanglewood Ln", status: "submittal_sent", areas: ["Front Yard"], date: "2026-03-18", total: 8750 },
+  { id: "PRJ-004", client: "Williams Home", address: "3310 Piping Rock Ln", status: "completed", areas: ["Front Yard", "Back Yard", "Side Yard"], date: "2026-03-10", total: 34200 },
+];
+
+const STATUS_MAP = {
+  photo_upload: { label: "Photos", color: "#6B7280", step: 1 },
+  plant_detection: { label: "Detection", color: "#F59E0B", step: 2 },
+  design_questionnaire: { label: "Questionnaire", color: "#8B5CF6", step: 3 },
+  design_generation: { label: "Designing", color: "#3B82F6", step: 4 },
+  design_review: { label: "Review", color: "#EC4899", step: 5 },
+  estimate_pending: { label: "Estimate", color: "#F97316", step: 6 },
+  estimate_approved: { label: "Approved", color: "#10B981", step: 7 },
+  submittal_sent: { label: "Submitted", color: "#06B6D4", step: 8 },
+  completed: { label: "Complete", color: "#059669", step: 9 },
+};
+
+const CRM_OPTIONS = ["Jobber", "ServiceTitan", "LMN", "Aspire", "SingleOps", "Housecall Pro", "Arborgold", "Service Autopilot", "Yardbook"];
+
+// ─── Utility Functions ───────────────────────────────────────────
+const fmt = (n) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+
+const cn = (...classes) => classes.filter(Boolean).join(" ");
+
+// ─── Styles ──────────────────────────────────────────────────────
+const STYLES = `
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Playfair+Display:wght@400;500;600;700&display=swap');
+
+:root {
+  --filo-black: #0A0E0F;
+  --filo-charcoal: #1A1F23;
+  --filo-slate: #2A3036;
+  --filo-grey: #6B7280;
+  --filo-silver: #9CA3AF;
+  --filo-light: #E5E7EB;
+  --filo-offwhite: #F3F4F6;
+  --filo-white: #FFFFFF;
+  --filo-green: #2D6A4F;
+  --filo-green-light: #40916C;
+  --filo-green-bright: #52B788;
+  --filo-green-glow: #74C69D;
+  --filo-green-pale: #D8F3DC;
+  --filo-gold: #C9A84C;
+  --filo-gold-light: #E2C97E;
+  --filo-amber: #F59E0B;
+  --filo-red: #EF4444;
+  --filo-blue: #3B82F6;
+  --filo-purple: #8B5CF6;
+  --filo-cyan: #06B6D4;
+  --filo-pink: #EC4899;
+  --font-display: 'Playfair Display', Georgia, serif;
+  --font-body: 'DM Sans', system-ui, sans-serif;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 20px;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,0.12);
+  --shadow-glow: 0 0 40px rgba(45,106,79,0.15);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--filo-offwhite);
+  color: var(--filo-charcoal);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--filo-silver); border-radius: 3px; }
+
+/* ─── Animations ─── */
+@keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slideIn { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+@keyframes scaleIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.fade-in { animation: fadeIn 0.4s ease-out forwards; }
+.slide-in { animation: slideIn 0.3s ease-out forwards; }
+.scale-in { animation: scaleIn 0.3s ease-out forwards; }
+
+/* ─── Layout ─── */
+.app-layout { display: flex; min-height: 100vh; }
+.sidebar {
+  width: 260px; background: var(--filo-charcoal); color: var(--filo-white);
+  display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0; z-index: 50;
+  transition: transform 0.3s ease;
+}
+.sidebar-collapsed { transform: translateX(-260px); }
+.main-content { flex: 1; margin-left: 260px; transition: margin-left 0.3s ease; }
+.main-content.expanded { margin-left: 0; }
+
+/* ─── Sidebar Styles ─── */
+.sidebar-brand {
+  padding: 24px 20px; display: flex; align-items: center; gap: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.sidebar-brand h1 {
+  font-family: var(--font-display); font-size: 28px; font-weight: 700;
+  background: linear-gradient(135deg, var(--filo-green-bright), var(--filo-gold));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  letter-spacing: -0.5px;
+}
+.sidebar-brand .leaf { font-size: 28px; filter: drop-shadow(0 0 8px rgba(82,183,136,0.4)); }
+.sidebar-nav { flex: 1; padding: 12px 8px; overflow-y: auto; }
+.sidebar-section { margin-bottom: 24px; }
+.sidebar-section-title {
+  font-size: 10px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--filo-grey); padding: 8px 12px;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  border-radius: var(--radius-sm); cursor: pointer; transition: all 0.15s ease;
+  font-size: 14px; font-weight: 400; color: var(--filo-silver);
+  border: none; background: none; width: 100%; text-align: left;
+}
+.nav-item:hover { background: rgba(255,255,255,0.05); color: var(--filo-white); }
+.nav-item.active { background: rgba(45,106,79,0.2); color: var(--filo-green-bright); font-weight: 500; }
+.nav-item .icon { font-size: 18px; width: 24px; text-align: center; }
+.nav-item .badge {
+  margin-left: auto; background: var(--filo-green); color: white;
+  font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600;
+}
+.sidebar-footer {
+  padding: 16px 20px; border-top: 1px solid rgba(255,255,255,0.06);
+  display: flex; align-items: center; gap: 12px;
+}
+.avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--filo-green), var(--filo-green-bright));
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 600; font-size: 14px; color: white;
+}
+.sidebar-footer .info { flex: 1; }
+.sidebar-footer .info .name { font-size: 13px; font-weight: 500; color: var(--filo-white); }
+.sidebar-footer .info .role { font-size: 11px; color: var(--filo-grey); }
+
+/* ─── Top Bar ─── */
+.topbar {
+  height: 64px; background: var(--filo-white); border-bottom: 1px solid var(--filo-light);
+  display: flex; align-items: center; padding: 0 24px; gap: 16px;
+  position: sticky; top: 0; z-index: 40;
+}
+.topbar-toggle {
+  display: none; background: none; border: none; font-size: 24px; cursor: pointer;
+  color: var(--filo-charcoal);
+}
+.topbar-breadcrumb { font-size: 14px; color: var(--filo-grey); }
+.topbar-breadcrumb span { color: var(--filo-charcoal); font-weight: 500; }
+.topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+
+/* ─── Buttons ─── */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px;
+  border-radius: var(--radius-sm); font-family: var(--font-body);
+  font-size: 14px; font-weight: 500; cursor: pointer; border: none;
+  transition: all 0.2s ease; white-space: nowrap;
+}
+.btn-primary {
+  background: linear-gradient(135deg, var(--filo-green), var(--filo-green-light));
+  color: white; box-shadow: 0 2px 8px rgba(45,106,79,0.3);
+}
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(45,106,79,0.4); }
+.btn-secondary { background: var(--filo-offwhite); color: var(--filo-charcoal); border: 1px solid var(--filo-light); }
+.btn-secondary:hover { background: var(--filo-light); }
+.btn-ghost { background: transparent; color: var(--filo-grey); }
+.btn-ghost:hover { background: var(--filo-offwhite); color: var(--filo-charcoal); }
+.btn-danger { background: var(--filo-red); color: white; }
+.btn-gold { background: linear-gradient(135deg, var(--filo-gold), var(--filo-gold-light)); color: var(--filo-charcoal); font-weight: 600; }
+.btn-sm { padding: 6px 14px; font-size: 13px; }
+.btn-lg { padding: 14px 28px; font-size: 16px; }
+.btn-icon { padding: 8px; border-radius: var(--radius-sm); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+/* ─── Cards ─── */
+.card {
+  background: var(--filo-white); border-radius: var(--radius); border: 1px solid var(--filo-light);
+  overflow: hidden; transition: all 0.2s ease;
+}
+.card:hover { box-shadow: var(--shadow-md); }
+.card-header { padding: 20px 24px; border-bottom: 1px solid var(--filo-light); display: flex; align-items: center; justify-content: space-between; }
+.card-body { padding: 24px; }
+.card-footer { padding: 16px 24px; border-top: 1px solid var(--filo-light); background: var(--filo-offwhite); }
+
+/* ─── Inputs ─── */
+.form-group { margin-bottom: 20px; }
+.form-label { display: block; font-size: 13px; font-weight: 500; color: var(--filo-slate); margin-bottom: 6px; }
+.form-input {
+  width: 100%; padding: 10px 14px; border: 1px solid var(--filo-light);
+  border-radius: var(--radius-sm); font-family: var(--font-body); font-size: 14px;
+  background: var(--filo-white); transition: all 0.2s ease; color: var(--filo-charcoal);
+}
+.form-input:focus { outline: none; border-color: var(--filo-green-bright); box-shadow: 0 0 0 3px rgba(82,183,136,0.15); }
+.form-input::placeholder { color: var(--filo-silver); }
+select.form-input { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%236B7280' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px; }
+textarea.form-input { resize: vertical; min-height: 80px; }
+
+/* ─── Stats ─── */
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.stat-card {
+  background: var(--filo-white); border: 1px solid var(--filo-light);
+  border-radius: var(--radius); padding: 20px 24px;
+}
+.stat-card .stat-label { font-size: 12px; font-weight: 500; color: var(--filo-grey); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+.stat-card .stat-value { font-family: var(--font-display); font-size: 32px; font-weight: 600; color: var(--filo-charcoal); }
+.stat-card .stat-change { font-size: 12px; margin-top: 4px; }
+.stat-card .stat-change.up { color: var(--filo-green); }
+.stat-card .stat-change.down { color: var(--filo-red); }
+
+/* ─── Tables ─── */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th { padding: 12px 16px; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--filo-grey); background: var(--filo-offwhite); border-bottom: 1px solid var(--filo-light); }
+td { padding: 14px 16px; font-size: 14px; border-bottom: 1px solid var(--filo-light); }
+tr:hover td { background: rgba(45,106,79,0.02); }
+.status-badge {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px;
+  border-radius: 20px; font-size: 12px; font-weight: 500;
+}
+
+/* ─── Page Header ─── */
+.page-header { padding: 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+.page-header h2 { font-family: var(--font-display); font-size: 28px; font-weight: 600; color: var(--filo-charcoal); }
+.page-header p { font-size: 14px; color: var(--filo-grey); margin-top: 4px; }
+.page-body { padding: 0 24px 24px; }
+
+/* ─── Wizard / Steps ─── */
+.wizard { max-width: 680px; margin: 0 auto; padding: 40px 24px; }
+.wizard-progress { display: flex; align-items: center; margin-bottom: 40px; gap: 4px; }
+.wizard-step-dot {
+  width: 32px; height: 32px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 600; transition: all 0.3s ease;
+}
+.wizard-step-dot.done { background: var(--filo-green); color: white; }
+.wizard-step-dot.active { background: var(--filo-green-bright); color: white; box-shadow: 0 0 0 4px rgba(82,183,136,0.2); }
+.wizard-step-dot.pending { background: var(--filo-light); color: var(--filo-grey); }
+.wizard-connector { flex: 1; height: 2px; background: var(--filo-light); }
+.wizard-connector.done { background: var(--filo-green); }
+.wizard-title { font-family: var(--font-display); font-size: 24px; font-weight: 600; margin-bottom: 8px; }
+.wizard-subtitle { font-size: 14px; color: var(--filo-grey); margin-bottom: 32px; }
+
+/* ─── Upload Zone ─── */
+.upload-zone {
+  border: 2px dashed var(--filo-light); border-radius: var(--radius);
+  padding: 40px; text-align: center; cursor: pointer;
+  transition: all 0.2s ease; background: var(--filo-offwhite);
+}
+.upload-zone:hover { border-color: var(--filo-green-bright); background: var(--filo-green-pale); }
+.upload-zone .icon { font-size: 40px; margin-bottom: 12px; }
+.upload-zone p { font-size: 14px; color: var(--filo-grey); }
+
+/* ─── Plant Cards ─── */
+.plant-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+.plant-card {
+  background: var(--filo-white); border: 1px solid var(--filo-light);
+  border-radius: var(--radius); padding: 16px; cursor: pointer;
+  transition: all 0.2s ease; position: relative;
+}
+.plant-card:hover { border-color: var(--filo-green-bright); transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.plant-card.selected { border-color: var(--filo-green); background: var(--filo-green-pale); }
+.plant-card .plant-icon { font-size: 32px; margin-bottom: 8px; }
+.plant-card .plant-name { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.plant-card .plant-meta { font-size: 12px; color: var(--filo-grey); }
+.plant-card .plant-price { font-weight: 600; color: var(--filo-green); margin-top: 8px; }
+
+/* ─── Design Canvas ─── */
+.design-canvas {
+  background: linear-gradient(180deg, #87CEEB 0%, #87CEEB 40%, #8FBC8F 40%, #6B8E5C 100%);
+  border-radius: var(--radius); min-height: 400px; position: relative;
+  overflow: hidden; border: 1px solid var(--filo-light);
+}
+.design-canvas .house {
+  position: absolute; bottom: 35%; left: 50%; transform: translateX(-50%);
+  width: 300px; height: 160px; background: #D4C5A9; border-radius: 4px 4px 0 0;
+}
+.design-canvas .house::before {
+  content: ''; position: absolute; top: -60px; left: -20px; right: -20px;
+  border-left: 170px solid transparent; border-right: 170px solid transparent;
+  border-bottom: 60px solid #8B7355;
+}
+.design-canvas .bed-area {
+  position: absolute; bottom: 10%; left: 10%; right: 10%; height: 25%;
+  background: rgba(101,67,33,0.6); border-radius: 50% 50% 0 0;
+  border: 2px dashed rgba(255,255,255,0.4);
+}
+.design-plant {
+  position: absolute; font-size: 24px; cursor: grab;
+  transition: transform 0.15s ease;
+  user-select: none;
+}
+.design-plant:hover { transform: scale(1.2); }
+
+/* ─── Chat Panel ─── */
+.chat-panel {
+  background: var(--filo-white); border: 1px solid var(--filo-light);
+  border-radius: var(--radius); display: flex; flex-direction: column; height: 400px;
+}
+.chat-messages { flex: 1; padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.chat-msg {
+  max-width: 80%; padding: 10px 14px; border-radius: 16px; font-size: 14px; line-height: 1.5;
+}
+.chat-msg.user { align-self: flex-end; background: var(--filo-green); color: white; border-bottom-right-radius: 4px; }
+.chat-msg.ai { align-self: flex-start; background: var(--filo-offwhite); color: var(--filo-charcoal); border-bottom-left-radius: 4px; }
+.chat-input-bar {
+  padding: 12px; border-top: 1px solid var(--filo-light);
+  display: flex; gap: 8px;
+}
+.chat-input-bar input { flex: 1; }
+
+/* ─── Estimate Table ─── */
+.estimate-section { margin-bottom: 24px; }
+.estimate-section h4 { font-size: 14px; font-weight: 600; color: var(--filo-slate); margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--filo-light); }
+.estimate-total { font-family: var(--font-display); font-size: 36px; font-weight: 700; color: var(--filo-green); }
+.estimate-row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 14px; }
+.estimate-row.total { font-weight: 700; font-size: 16px; border-top: 2px solid var(--filo-charcoal); padding-top: 12px; margin-top: 8px; }
+
+/* ─── Onboarding ─── */
+.onboarding-bg {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0A1A12 0%, #1A2F23 50%, #0A1A12 100%);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.onboarding-card {
+  background: var(--filo-white); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg); width: 100%; max-width: 580px;
+  padding: 48px; animation: scaleIn 0.4s ease-out;
+}
+
+/* ─── Login ─── */
+.login-page {
+  min-height: 100vh; display: flex;
+  background: linear-gradient(135deg, #0A1A12 0%, #1A2F23 50%, #0A1A12 100%);
+}
+.login-left { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; color: white; }
+.login-right { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px; }
+.login-card { background: white; border-radius: var(--radius-lg); padding: 48px; width: 100%; max-width: 420px; box-shadow: var(--shadow-lg); }
+
+/* ─── Tabs ─── */
+.tabs { display: flex; gap: 2px; background: var(--filo-offwhite); border-radius: var(--radius-sm); padding: 3px; margin-bottom: 24px; }
+.tab-btn {
+  flex: 1; padding: 8px 16px; border: none; background: transparent;
+  border-radius: 6px; font-family: var(--font-body); font-size: 13px;
+  font-weight: 500; color: var(--filo-grey); cursor: pointer; transition: all 0.2s ease;
+}
+.tab-btn.active { background: white; color: var(--filo-charcoal); box-shadow: var(--shadow-sm); }
+
+/* ─── Modal ─── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+  animation: fadeIn 0.2s ease;
+}
+.modal { background: white; border-radius: var(--radius-lg); max-width: 600px; width: 100%; max-height: 80vh; overflow-y: auto; animation: scaleIn 0.3s ease; }
+.modal-header { padding: 24px; border-bottom: 1px solid var(--filo-light); display: flex; align-items: center; justify-content: space-between; }
+.modal-header h3 { font-family: var(--font-display); font-size: 20px; }
+.modal-body { padding: 24px; }
+.modal-footer { padding: 16px 24px; border-top: 1px solid var(--filo-light); display: flex; justify-content: flex-end; gap: 12px; }
+
+/* ─── Responsive / Mobile ─── */
+@media (max-width: 768px) {
+  .sidebar { transform: translateX(-260px); }
+  .sidebar.mobile-open { transform: translateX(0); }
+  .main-content { margin-left: 0 !important; }
+  .topbar-toggle { display: block; }
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .page-header h2 { font-size: 22px; }
+  .login-page { flex-direction: column; }
+  .login-left { display: none; }
+  .plant-grid { grid-template-columns: repeat(2, 1fr); }
+  .hide-mobile { display: none !important; }
+}
+
+/* ─── Pill Selector ─── */
+.pill-group { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill {
+  padding: 8px 16px; border-radius: 20px; border: 1px solid var(--filo-light);
+  background: var(--filo-white); font-size: 13px; cursor: pointer;
+  transition: all 0.2s ease; font-family: var(--font-body);
+}
+.pill:hover { border-color: var(--filo-green-bright); }
+.pill.active { background: var(--filo-green); color: white; border-color: var(--filo-green); }
+
+/* ─── Toggle ─── */
+.toggle-wrap { display: flex; align-items: center; gap: 12px; }
+.toggle {
+  width: 44px; height: 24px; border-radius: 12px; background: var(--filo-light);
+  position: relative; cursor: pointer; transition: background 0.2s ease;
+}
+.toggle.on { background: var(--filo-green); }
+.toggle::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 20px; height: 20px; border-radius: 50%; background: white;
+  transition: transform 0.2s ease; box-shadow: var(--shadow-sm);
+}
+.toggle.on::after { transform: translateX(20px); }
+
+/* ─── Skeleton ─── */
+.skeleton {
+  background: linear-gradient(90deg, var(--filo-light) 25%, var(--filo-offwhite) 50%, var(--filo-light) 75%);
+  background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: var(--radius-sm);
+}
+
+/* ─── Progress Bar ─── */
+.progress-bar { height: 8px; background: var(--filo-light); border-radius: 4px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--filo-green), var(--filo-green-bright)); border-radius: 4px; transition: width 0.5s ease; }
+
+/* ─── Submittal Preview ─── */
+.submittal-preview {
+  background: white; border: 1px solid var(--filo-light); border-radius: var(--radius);
+  padding: 48px; max-width: 800px; margin: 0 auto;
+}
+.submittal-cover { text-align: center; padding: 60px 40px; border-bottom: 3px solid var(--filo-green); margin-bottom: 40px; }
+.submittal-cover h1 { font-family: var(--font-display); font-size: 36px; color: var(--filo-charcoal); margin-bottom: 8px; }
+.submittal-section { margin-bottom: 32px; }
+.submittal-section h3 { font-family: var(--font-display); font-size: 20px; margin-bottom: 16px; color: var(--filo-green); }
+
+/* Loading spinner */
+.spinner { width: 24px; height: 24px; border: 3px solid var(--filo-light); border-top-color: var(--filo-green); border-radius: 50%; animation: spin 0.8s linear infinite; }
+`;
+
+// ═══════════════════════════════════════════════════════════════════
+// COMPONENTS
+// ═══════════════════════════════════════════════════════════════════
+
+// ─── Sidebar ─────────────────────────────────────────────────────
+function Sidebar({ page, setPage, mobileOpen, setMobileOpen }) {
+  const navItems = [
+    { section: "Core", items: [
+      { id: "dashboard", icon: "📊", label: "Dashboard" },
+      { id: "projects", icon: "📁", label: "Projects", badge: MOCK_PROJECTS.length },
+      { id: "new-project", icon: "✨", label: "New Project" },
+      { id: "clients", icon: "👥", label: "Clients" },
+    ]},
+    { section: "Library", items: [
+      { id: "plants", icon: "🌿", label: "Plant Library" },
+      { id: "templates", icon: "📋", label: "Templates" },
+    ]},
+    { section: "Business", items: [
+      { id: "estimates", icon: "💰", label: "Estimates" },
+      { id: "submittals", icon: "📄", label: "Submittals" },
+      { id: "crm", icon: "🔗", label: "CRM Integration" },
+    ]},
+    { section: "Settings", items: [
+      { id: "settings", icon: "⚙️", label: "Settings" },
+      { id: "billing", icon: "💳", label: "Billing" },
+      { id: "team", icon: "🏢", label: "Team" },
+    ]},
+  ];
+
+  return (
+    <div className={cn("sidebar", mobileOpen && "mobile-open")}>
+      <div className="sidebar-brand">
+        <span className="leaf">🌿</span>
+        <h1>FILO</h1>
+      </div>
+      <nav className="sidebar-nav">
+        {navItems.map(section => (
+          <div className="sidebar-section" key={section.section}>
+            <div className="sidebar-section-title">{section.section}</div>
+            {section.items.map(item => (
+              <button key={item.id} className={cn("nav-item", page === item.id && "active")}
+                onClick={() => { setPage(item.id); setMobileOpen(false); }}>
+                <span className="icon">{item.icon}</span>
+                {item.label}
+                {item.badge && <span className="badge">{item.badge}</span>}
+              </button>
+            ))}
+          </div>
+        ))}
+      </nav>
+      <div className="sidebar-footer">
+        <div className="avatar">EC</div>
+        <div className="info">
+          <div className="name">Esteph Christison</div>
+          <div className="role">Admin • King's Garden</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Top Bar ─────────────────────────────────────────────────────
+function TopBar({ page, setMobileOpen }) {
+  const titles = {
+    dashboard: "Dashboard", projects: "Projects", "new-project": "New Project",
+    clients: "Clients", plants: "Plant Library", templates: "Templates",
+    estimates: "Estimates", submittals: "Submittals", crm: "CRM Integration",
+    settings: "Settings", billing: "Billing", team: "Team",
+  };
+  return (
+    <div className="topbar">
+      <button className="topbar-toggle" onClick={() => setMobileOpen(o => !o)}>☰</button>
+      <div className="topbar-breadcrumb">
+        FILO / <span>{titles[page] || "Dashboard"}</span>
+      </div>
+      <div className="topbar-actions">
+        <button className="btn btn-primary btn-sm" onClick={() => {}}>🔔</button>
+        <button className="btn btn-secondary btn-sm">❓ Help</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Dashboard ───────────────────────────────────────────────────
+function DashboardPage({ setPage }) {
+  const stats = [
+    { label: "Active Projects", value: "12", change: "+3 this week", up: true },
+    { label: "Estimates Pending", value: "5", change: "$48,200 value", up: true },
+    { label: "Revenue This Month", value: "$86,400", change: "+12% vs last month", up: true },
+    { label: "Close Rate", value: "72%", change: "-2% vs last month", up: false },
+  ];
+
+  return (
+    <div className="fade-in">
+      <div className="page-header">
+        <div>
+          <h2>Good {new Date().getHours() < 12 ? "morning" : "afternoon"}, Esteph</h2>
+          <p>Here's what's happening with King's Garden Landscaping</p>
+        </div>
+        <button className="btn btn-primary" onClick={() => setPage("new-project")}>
+          ✨ New Project
+        </button>
+      </div>
+      <div className="page-body">
+        <div className="stat-grid">
+          {stats.map((s, i) => (
+            <div className="stat-card fade-in" key={i} style={{ animationDelay: `${i * 0.08}s` }}>
+              <div className="stat-label">{s.label}</div>
+              <div className="stat-value">{s.value}</div>
+              <div className={cn("stat-change", s.up ? "up" : "down")}>
+                {s.up ? "↑" : "↓"} {s.change}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="card" style={{ marginBottom: 24 }}>
+          <div className="card-header">
+            <h3 style={{ fontFamily: "var(--font-display)", fontSize: 18 }}>Recent Projects</h3>
+            <button className="btn btn-ghost btn-sm" onClick={() => setPage("projects")}>View All →</button>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Project</th><th>Client</th><th>Status</th><th>Areas</th><th className="hide-mobile">Total</th><th></th></tr>
+              </thead>
+              <tbody>
+                {MOCK_PROJECTS.map(p => (
+                  <tr key={p.id} className="fade-in">
+                    <td style={{ fontWeight: 500 }}>{p.id}</td>
+                    <td>{p.client}<br/><span style={{ fontSize: 12, color: "var(--filo-grey)" }}>{p.address}</span></td>
+                    <td>
+                      <span className="status-badge" style={{ background: STATUS_MAP[p.status].color + "18", color: STATUS_MAP[p.status].color }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: STATUS_MAP[p.status].color, display: "inline-block" }}></span>
+                        {STATUS_MAP[p.status].label}
+                      </span>
+                    </td>
+                    <td>{p.areas.join(", ")}</td>
+                    <td className="hide-mobile" style={{ fontWeight: 600 }}>{fmt(p.total)}</td>
+                    <td><button className="btn btn-ghost btn-sm">Open →</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <div className="card">
+            <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", fontSize: 18 }}>AI Design Queue</h3></div>
+            <div className="card-body">
+              {["Johnson Front Yard", "Chen Back Patio"].map((name, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid var(--filo-light)" }}>
+                  <div className="spinner" style={{ width: 20, height: 20 }}></div>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 500 }}>{name}</div>
+                    <div style={{ fontSize: 12, color: "var(--filo-grey)" }}>Generating design...</div>
+                  </div>
+                  <div className="progress-bar" style={{ flex: 1, marginLeft: "auto" }}>
+                    <div className="progress-fill" style={{ width: `${60 + i * 25}%` }}></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="card">
+            <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", fontSize: 18 }}>Quick Actions</h3></div>
+            <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <button className="btn btn-secondary" onClick={() => setPage("new-project")}>🌱 Create New Project</button>
+              <button className="btn btn-secondary" onClick={() => setPage("plants")}>🌿 Browse Plant Library</button>
+              <button className="btn btn-secondary" onClick={() => setPage("estimates")}>💰 View Pending Estimates</button>
+              <button className="btn btn-secondary" onClick={() => setPage("crm")}>🔗 CRM Sync Status</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Projects Page ───────────────────────────────────────────────
+function ProjectsPage({ setPage }) {
+  const [filter, setFilter] = useState("all");
+  const filtered = filter === "all" ? MOCK_PROJECTS : MOCK_PROJECTS.filter(p => p.status === filter);
+
+  return (
+    <div className="fade-in">
+      <div className="page-header">
+        <div>
+          <h2>Projects</h2>
+          <p>{MOCK_PROJECTS.length} total projects</p>
+        </div>
+        <button className="btn btn-primary" onClick={() => setPage("new-project")}>✨ New Project</button>
+      </div>
+      <div className="page-body">
+        <div className="tabs" style={{ maxWidth: 600 }}>
+          {[["all", "All"], ["design_review", "In Review"], ["estimate_approved", "Approved"], ["completed", "Completed"]].map(([val, label]) => (
+            <button key={val} className={cn("tab-btn", filter === val && "active")} onClick={() => setFilter(val)}>{label}</button>
+          ))}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
+          {filtered.map((p, i) => (
+            <div key={p.id} className="card fade-in" style={{ cursor: "pointer", animationDelay: `${i * 0.05}s` }}>
+              <div className="card-body">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: 12 }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 16 }}>{p.client}</div>
+                    <div style={{ fontSize: 13, color: "var(--filo-grey)" }}>{p.address}</div>
+                  </div>
+                  <span className="status-badge" style={{ background: STATUS_MAP[p.status].color + "18", color: STATUS_MAP[p.status].color }}>
+                    {STATUS_MAP[p.status].label}
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: 16, fontSize: 13, color: "var(--filo-grey)" }}>
+                  <span>📐 {p.areas.length} area{p.areas.length > 1 ? "s" : ""}</span>
+                  <span>📅 {p.date}</span>
+                </div>
+                <div style={{ marginTop: 12, fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 600, color: "var(--filo-green)" }}>{fmt(p.total)}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── New Project Wizard ──────────────────────────────────────────
+function NewProjectPage() {
+  const [step, setStep] = useState(1);
+  const [project, setProject] = useState({
+    clientName: "", address: "", phone: "", email: "",
+    areas: [], photos: [], existingPlants: [],
+    sun: "", style: "", specialRequests: "", lighting: false, hardscape: false,
+    designPlants: [], chatMessages: [],
+    estimateApproved: false,
+  });
+
+  // ─── AI Design State (Step 6) ──────────────────────────────────
+  const [designStatus, setDesignStatus] = useState("idle"); // idle | generating | done | error
+  const [designProgress, setDesignProgress] = useState(0);
+  const [designProgressLabel, setDesignProgressLabel] = useState("");
+  const [designResult, setDesignResult] = useState(null);
+  const [designError, setDesignError] = useState(null);
+  const designRunRef = useRef(false);
+
+  // ─── Chat State (Step 7) ──────────────────────────────────────
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatEndRef = useRef(null);
+
+  const totalSteps = 10;
+  const stepTitles = ["Client Info", "Property Areas", "Photo Upload", "Plant Detection", "Design Options", "AI Design", "Review & Adjust", "Estimate", "Submittal", "CRM Push"];
+
+  const updateProject = (updates) => setProject(p => ({ ...p, ...updates }));
+
+  // ─── Kick off AI design generation when user enters Step 6 ────
+  useEffect(() => {
+    if (step !== 6 || designRunRef.current || designStatus === "done") return;
+    if (!isAIConfigured()) {
+      // No API key — keep showing the mock UI
+      setDesignStatus("idle");
+      return;
+    }
+
+    designRunRef.current = true;
+    setDesignStatus("generating");
+    setDesignProgress(10);
+    setDesignProgressLabel("Analyzing photos and site conditions...");
+
+    // Map the project style pill to a slug the prompt expects
+    const styleMap = {
+      "Formal / Symmetrical": "formal",
+      "Naturalistic / Cottage": "naturalistic",
+      "Modern / Minimalist": "modern",
+      "Tropical": "tropical",
+      "Desert / Xeriscape": "xeriscape",
+    };
+
+    const runDesign = async () => {
+      try {
+        setDesignProgress(25);
+        setDesignProgressLabel("Selecting plants from your inventory...");
+
+        await new Promise((r) => setTimeout(r, 800)); // brief pause so user sees progress
+        setDesignProgress(50);
+        setDesignProgressLabel("Calculating spacing and layering...");
+
+        const result = await generateDesign({
+          sunExposure: project.sun || "Full Sun",
+          designStyle: styleMap[project.style] || "naturalistic",
+          specialRequests: project.specialRequests || "",
+          availablePlants: PLANTS_DB,
+          existingPlantsKeep: (project.existingPlants || []).filter((p) => p.status === "keep"),
+          existingPlantsRemove: (project.existingPlants || []).filter((p) => p.status === "remove"),
+          location: { city: "Houston", state: "TX", zone: "9a" },
+          lighting: project.lighting,
+          hardscape: project.hardscape,
+        });
+
+        setDesignProgress(90);
+        setDesignProgressLabel("Finalizing design...");
+        await new Promise((r) => setTimeout(r, 500));
+
+        if (result.success && result.data) {
+          setDesignResult(result.data);
+          setDesignStatus("done");
+          setDesignProgress(100);
+          setDesignProgressLabel("Design complete!");
+
+          // Seed the chat with an initial AI message
+          setChatMessages([
+            {
+              role: "ai",
+              text: result.data.design_summary
+                || "Your design is ready! I've placed plants following your style preferences with layered heights. You can drag plants to reposition them, or tell me what changes you'd like.",
+            },
+            {
+              role: "ai",
+              text: 'Try commands like "Swap all Loropetalum for Knockout Roses" or "Add 3 more Gulf Muhly Grass to the right side."',
+            },
+          ]);
+        } else {
+          throw new Error(result.error || "Design generation returned no data");
+        }
+      } catch (err) {
+        console.error("[FILO] Design generation failed, falling back to mock:", err);
+        setDesignError(err.message);
+        setDesignStatus("error");
+        // Fallback: show mock data anyway
+        setDesignProgress(100);
+        setDesignProgressLabel("Showing demo design (API unavailable)");
+        setChatMessages([
+          { role: "ai", text: "Your design is ready! I've placed 8 plants following a naturalistic cottage style with layered heights. The Crape Myrtle anchors the design as a specimen tree, with Loropetalum and Indian Hawthorn providing mid-level structure." },
+          { role: "ai", text: 'You can drag plants to reposition them, or tell me what changes you\'d like. Try: "Swap all Loropetalum for Knockout Roses" or "Add 3 more Gulf Muhly Grass to the right side."' },
+        ]);
+      }
+    };
+
+    runDesign();
+  }, [step]);
+
+  // ─── Auto-scroll chat when new messages arrive ────────────────
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages]);
+
+  // ─── Send a chat command to the AI ────────────────────────────
+  const handleChatSend = async () => {
+    const msg = chatInput.trim();
+    if (!msg || chatLoading) return;
+
+    setChatInput("");
+    setChatMessages((prev) => [...prev, { role: "user", text: msg }]);
+    setChatLoading(true);
+
+    try {
+      if (!isAIConfigured()) throw new Error("API key not set");
+
+      // Determine current plants: use AI result if available, else fall back to PLANTS_DB
+      const currentPlants = designResult?.plant_placements
+        ? designResult.plant_placements.map((p) => ({
+            id: p.plant_library_id,
+            name: p.common_name,
+            quantity: p.quantity,
+            position_x: p.position_x,
+            position_y: p.position_y,
+            size: p.container_size,
+          }))
+        : PLANTS_DB.slice(0, 8);
+
+      const result = await chatDesignCommand(msg, {
+        currentPlants,
+        availablePlants: PLANTS_DB,
+      });
+
+      setChatMessages((prev) => [
+        ...prev,
+        { role: "ai", text: result.message },
+        ...(result.warnings?.length
+          ? [{ role: "ai", text: `\u26A0\uFE0F ${result.warnings.join(". ")}` }]
+          : []),
+      ]);
+    } catch (err) {
+      console.error("[FILO] Chat error:", err);
+      setChatMessages((prev) => [
+        ...prev,
+        { role: "ai", text: "Sorry, I had trouble processing that. Could you rephrase your request?" },
+      ]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  return (
+    <div className="fade-in">
+      <div className="page-header">
+        <div>
+          <h2>New Project</h2>
+          <p>Step {step} of {totalSteps} — {stepTitles[step - 1]}</p>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {step > 1 && <button className="btn btn-secondary" onClick={() => setStep(s => s - 1)}>← Back</button>}
+          {step < totalSteps && (
+            <button className="btn btn-primary" onClick={() => setStep(s => s + 1)}>
+              {step === totalSteps - 1 ? "Generate" : "Continue →"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="page-body">
+        {/* Progress Bar */}
+        <div style={{ display: "flex", gap: 4, marginBottom: 32 }}>
+          {Array.from({ length: totalSteps }, (_, i) => (
+            <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+              <div style={{
+                width: "100%", height: 4, borderRadius: 2,
+                background: i < step ? "var(--filo-green)" : i === step - 1 ? "var(--filo-green-bright)" : "var(--filo-light)",
+                transition: "all 0.3s ease"
+              }}></div>
+              <span style={{ fontSize: 10, color: i <= step - 1 ? "var(--filo-green)" : "var(--filo-silver)", fontWeight: i === step - 1 ? 600 : 400 }}>
+                {stepTitles[i]}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Step 1: Client Info */}
+        {step === 1 && (
+          <div className="card scale-in" style={{ maxWidth: 600 }}>
+            <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Client Information</h3></div>
+            <div className="card-body">
+              <div className="form-group">
+                <label className="form-label">Client Name *</label>
+                <input className="form-input" placeholder="e.g. Johnson Residence" value={project.clientName}
+                  onChange={e => updateProject({ clientName: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Property Address *</label>
+                <input className="form-input" placeholder="4521 River Oaks Blvd, Houston, TX" value={project.address}
+                  onChange={e => updateProject({ address: e.target.value })} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div className="form-group">
+                  <label className="form-label">Phone</label>
+                  <input className="form-input" placeholder="(713) 555-0199" value={project.phone}
+                    onChange={e => updateProject({ phone: e.target.value })} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Email</label>
+                  <input className="form-input" placeholder="client@email.com" value={project.email}
+                    onChange={e => updateProject({ email: e.target.value })} />
+                </div>
+              </div>
+              <div style={{ padding: 16, background: "var(--filo-green-pale)", borderRadius: "var(--radius-sm)", fontSize: 13, color: "var(--filo-green)" }}>
+                💡 Client data will be stored in FILO and automatically pushed to your connected CRM.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Property Areas */}
+        {step === 2 && (
+          <div className="card scale-in" style={{ maxWidth: 600 }}>
+            <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Select Property Areas</h3></div>
+            <div className="card-body">
+              <p style={{ fontSize: 14, color: "var(--filo-grey)", marginBottom: 20 }}>Which areas of the property need landscaping? Select all that apply.</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {["Front Yard", "Back Yard", "Side Yard (Left)", "Side Yard (Right)"].map(area => {
+                  const selected = project.areas.includes(area);
+                  return (
+                    <div key={area} onClick={() => updateProject({ areas: selected ? project.areas.filter(a => a !== area) : [...project.areas, area] })}
+                      style={{
+                        padding: 16, borderRadius: "var(--radius-sm)", cursor: "pointer",
+                        border: `2px solid ${selected ? "var(--filo-green)" : "var(--filo-light)"}`,
+                        background: selected ? "var(--filo-green-pale)" : "white",
+                        display: "flex", alignItems: "center", gap: 12, transition: "all 0.2s ease"
+                      }}>
+                      <span style={{ width: 24, height: 24, borderRadius: 6, border: `2px solid ${selected ? "var(--filo-green)" : "var(--filo-light)"}`,
+                        background: selected ? "var(--filo-green)" : "white", display: "flex", alignItems: "center", justifyContent: "center",
+                        color: "white", fontSize: 14, fontWeight: 700 }}>
+                        {selected && "✓"}
+                      </span>
+                      <span style={{ fontWeight: 500 }}>{area}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Photo Upload */}
+        {step === 3 && (
+          <div className="card scale-in">
+            <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Upload Photos</h3></div>
+            <div className="card-body">
+              {(project.areas.length > 0 ? project.areas : ["Front Yard"]).map(area => (
+                <div key={area} style={{ marginBottom: 24 }}>
+                  <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>📸 {area}</h4>
+                  <div className="upload-zone">
+                    <div className="icon">📷</div>
+                    <p><strong>Tap to upload</strong> or drag and drop photos</p>
+                    <p style={{ fontSize: 12, marginTop: 4 }}>JPG, PNG, HEIC up to 25MB each</p>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                    {[1, 2].map(n => (
+                      <div key={n} style={{
+                        width: 100, height: 100, borderRadius: "var(--radius-sm)",
+                        background: "linear-gradient(135deg, #8FBC8F, #6B8E5C)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 10, color: "white", fontWeight: 500, position: "relative"
+                      }}>
+                        Demo {n}
+                        <button style={{ position: "absolute", top: 4, right: 4, background: "rgba(0,0,0,0.5)", border: "none", color: "white", borderRadius: "50%", width: 18, height: 18, fontSize: 10, cursor: "pointer" }}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              <div style={{ padding: 16, background: "#FEF3C7", borderRadius: "var(--radius-sm)", fontSize: 13, color: "#92400E" }}>
+                ⚠️ Multiple photos of the same area? We'll ask if they're different angles of the same space.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 4: Existing Plant Detection */}
+        {step === 4 && (
+          <div className="card scale-in">
+            <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Existing Plant Detection</h3></div>
+            <div className="card-body">
+              <p style={{ fontSize: 14, color: "var(--filo-grey)", marginBottom: 20 }}>AI has detected existing plants in the bed. Mark plants to <span style={{ color: "var(--filo-green)", fontWeight: 600 }}>KEEP (green)</span> or <span style={{ color: "var(--filo-red)", fontWeight: 600 }}>REMOVE (red)</span>.</p>
+              <div style={{ background: "linear-gradient(180deg, #87CEEB 0%, #87CEEB 30%, #8FBC8F 30%, #6B8E5C 100%)", borderRadius: "var(--radius)", minHeight: 300, position: "relative", marginBottom: 20 }}>
+                {[
+                  { x: 20, y: 60, name: "Ligustrum", status: "keep" },
+                  { x: 45, y: 65, name: "Azalea", status: "remove" },
+                  { x: 70, y: 58, name: "Indian Hawthorn", status: "keep" },
+                  { x: 35, y: 75, name: "Dead shrub", status: "remove" },
+                ].map((plant, i) => (
+                  <div key={i} style={{
+                    position: "absolute", left: `${plant.x}%`, top: `${plant.y}%`,
+                    transform: "translate(-50%, -50%)",
+                  }}>
+                    <div style={{
+                      width: 48, height: 48, borderRadius: "50%",
+                      border: `3px solid ${plant.status === "keep" ? "var(--filo-green-bright)" : "var(--filo-red)"}`,
+                      background: `${plant.status === "keep" ? "rgba(82,183,136,0.3)" : "rgba(239,68,68,0.3)"}`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      cursor: "pointer", fontSize: 20,
+                    }}>
+                      {plant.status === "keep" ? "🌿" : "❌"}
+                    </div>
+                    <div style={{
+                      position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)",
+                      background: "white", padding: "4px 8px", borderRadius: 6, fontSize: 11,
+                      fontWeight: 500, whiteSpace: "nowrap", marginTop: 4, boxShadow: "var(--shadow-sm)"
+                    }}>{plant.name}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 16, fontSize: 13 }}>
+                <div style={{ flex: 1, padding: 12, background: "var(--filo-green-pale)", borderRadius: "var(--radius-sm)" }}>
+                  ✅ <strong>2 plants</strong> marked to keep
+                </div>
+                <div style={{ flex: 1, padding: 12, background: "#FEE2E2", borderRadius: "var(--radius-sm)" }}>
+                  🗑️ <strong>2 plants</strong> marked for removal
+                </div>
+              </div>
+              <div style={{ marginTop: 16 }}>
+                <label className="form-label">Removal appears as a lump sum line item</label>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input className="form-input" style={{ width: 120 }} defaultValue="350.00" />
+                  <span style={{ fontSize: 13, color: "var(--filo-grey)" }}>Haul away included</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 5: Design Questionnaire */}
+        {step === 5 && (
+          <div className="card scale-in" style={{ maxWidth: 600 }}>
+            <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Design Preferences</h3></div>
+            <div className="card-body">
+              <div className="form-group">
+                <label className="form-label">Sun Exposure</label>
+                <div className="pill-group">
+                  {["Full Sun ☀️", "Partial Shade ⛅", "Full Shade 🌑"].map(opt => (
+                    <span key={opt} className={cn("pill", project.sun === opt && "active")}
+                      onClick={() => updateProject({ sun: opt })}>{opt}</span>
+                  ))}
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Design Style</label>
+                <div className="pill-group">
+                  {["Formal / Symmetrical", "Naturalistic / Cottage", "Modern / Minimalist", "Tropical", "Desert / Xeriscape"].map(opt => (
+                    <span key={opt} className={cn("pill", project.style === opt && "active")}
+                      onClick={() => updateProject({ style: opt })}>{opt}</span>
+                  ))}
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Specific Plant Requests</label>
+                <textarea className="form-input" placeholder="e.g. I want red knockout roses along the walkway..."
+                  value={project.specialRequests} onChange={e => updateProject({ specialRequests: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Additional Features</label>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div className="toggle-wrap">
+                    <div className={cn("toggle", project.lighting && "on")} onClick={() => updateProject({ lighting: !project.lighting })}></div>
+                    <span style={{ fontSize: 14 }}>💡 Landscape Lighting</span>
+                  </div>
+                  {project.lighting && (
+                    <div className="pill-group" style={{ paddingLeft: 56 }}>
+                      {["Pathway Lighting", "Uplighting", "Tree Moonlighting", "Accent Lighting"].map(t => (
+                        <span key={t} className="pill">{t}</span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="toggle-wrap">
+                    <div className={cn("toggle", project.hardscape && "on")} onClick={() => updateProject({ hardscape: !project.hardscape })}></div>
+                    <span style={{ fontSize: 14 }}>🧱 Hardscape Changes</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 6: AI Design Generation */}
+        {step === 6 && (
+          <div className="scale-in">
+            <div className="card" style={{ marginBottom: 24 }}>
+              <div className="card-body" style={{ textAlign: "center", padding: 60 }}>
+                <div style={{ fontSize: 64, marginBottom: 16 }}>{designStatus === "done" ? "✅" : designStatus === "error" ? "⚠️" : "🌿"}</div>
+                <h3 style={{ fontFamily: "var(--font-display)", fontSize: 24, marginBottom: 8 }}>
+                  {designStatus === "done" ? "Design Complete" : designStatus === "error" ? "Design Ready (Demo Mode)" : "AI Design in Progress"}
+                </h3>
+                <p style={{ color: "var(--filo-grey)", marginBottom: 24, maxWidth: 500, margin: "0 auto 24px" }}>
+                  {designStatus === "generating"
+                    ? "FILO is analyzing the uploaded photos, selecting plants based on sun exposure, architecture, and your style preferences..."
+                    : designStatus === "done"
+                    ? (designResult?.design_rationale || "Your AI-generated landscape design is ready for review.")
+                    : designStatus === "error"
+                    ? "Could not reach the AI service. Showing demo design so you can continue."
+                    : "Click Continue to generate your design, or wait a moment..."}
+                </p>
+                <div className="progress-bar" style={{ maxWidth: 400, margin: "0 auto", marginBottom: 12 }}>
+                  <div className="progress-fill" style={{ width: `${designProgress}%`, transition: "width 0.6s ease" }}></div>
+                </div>
+                <div style={{ fontSize: 13, color: "var(--filo-grey)" }}>
+                  {designProgressLabel || "Selecting plants \u2022 Calculating spacing \u2022 Rendering photorealistic design"}
+                </div>
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Design Preview</h3></div>
+              <div className="card-body">
+                <div className="design-canvas">
+                  <div className="house"></div>
+                  <div className="bed-area">
+                    {/* Show AI-generated placements if available, else fall back to mock */}
+                    {(designResult?.plant_placements || []).length > 0
+                      ? designResult.plant_placements.map((placement, i) => {
+                          // Match to a PLANTS_DB entry for the emoji icon
+                          const match = PLANTS_DB.find(
+                            (p) => p.id === Number(placement.plant_library_id) || p.name.toLowerCase().includes((placement.common_name || "").split(" ")[0].toLowerCase())
+                          );
+                          const icon = match?.img || "🌱";
+                          const isTree = (placement.layer === "background") || (match?.type === "tree");
+                          const isGround = (placement.layer === "foreground") || (match?.type === "groundcover");
+                          return (
+                            <div key={i} className="design-plant" style={{
+                              left: `${Math.max(5, Math.min(90, placement.position_x || 50))}%`,
+                              top: `${Math.max(5, Math.min(85, placement.position_y || 50))}%`,
+                              fontSize: isTree ? 36 : isGround ? 16 : 24,
+                              zIndex: placement.z_index || i,
+                            }} title={`${placement.common_name} (${placement.container_size}) x${placement.quantity || 1}`}>
+                              {icon}
+                            </div>
+                          );
+                        })
+                      : PLANTS_DB.slice(0, 8).map((plant, i) => (
+                          <div key={plant.id} className="design-plant" style={{
+                            left: `${10 + (i * 12)}%`, top: `${15 + (i % 3) * 20}%`,
+                            fontSize: plant.type === "tree" ? 36 : plant.type === "groundcover" ? 16 : 24,
+                          }}>
+                            {plant.img}
+                          </div>
+                        ))
+                    }
+                  </div>
+                </div>
+                <div style={{ marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {/* Plant palette summary */}
+                  {(designResult?.plant_placements || []).length > 0
+                    ? designResult.plant_placements.map((p, i) => {
+                        const match = PLANTS_DB.find(
+                          (db) => db.id === Number(p.plant_library_id) || db.name.toLowerCase().includes((p.common_name || "").split(" ")[0].toLowerCase())
+                        );
+                        return (
+                          <span key={i} style={{ fontSize: 12, background: "var(--filo-offwhite)", padding: "4px 10px", borderRadius: 12 }}>
+                            {match?.img || "🌱"} {p.common_name} x{p.quantity || 1}
+                          </span>
+                        );
+                      })
+                    : PLANTS_DB.slice(0, 6).map(p => (
+                        <span key={p.id} style={{ fontSize: 12, background: "var(--filo-offwhite)", padding: "4px 10px", borderRadius: 12 }}>
+                          {p.img} {p.name.split("'")[0].trim()} x {Math.floor(Math.random() * 5) + 1}
+                        </span>
+                      ))
+                  }
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 7: Review & Adjust */}
+        {step === 7 && (
+          <div className="scale-in" style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 24 }}>
+            <div>
+              <div className="card" style={{ marginBottom: 24 }}>
+                <div className="card-header">
+                  <h3 style={{ fontFamily: "var(--font-display)" }}>Design Canvas</h3>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button className="btn btn-secondary btn-sm">↩ Undo</button>
+                    <button className="btn btn-secondary btn-sm">↪ Redo</button>
+                  </div>
+                </div>
+                <div className="card-body">
+                  <div className="design-canvas" style={{ minHeight: 450 }}>
+                    <div className="house"></div>
+                    <div className="bed-area">
+                      {/* Show AI placements if available, else mock */}
+                      {(designResult?.plant_placements || []).length > 0
+                        ? designResult.plant_placements.map((placement, i) => {
+                            const match = PLANTS_DB.find(
+                              (p) => p.id === Number(placement.plant_library_id) || p.name.toLowerCase().includes((placement.common_name || "").split(" ")[0].toLowerCase())
+                            );
+                            const icon = match?.img || "🌱";
+                            const isTree = (placement.layer === "background") || (match?.type === "tree");
+                            const isGround = (placement.layer === "foreground") || (match?.type === "groundcover");
+                            return (
+                              <div key={i} className="design-plant"
+                                title={`Drag to reposition: ${placement.common_name} (${placement.container_size}) x${placement.quantity || 1}`}
+                                style={{
+                                  left: `${Math.max(5, Math.min(90, placement.position_x || 50))}%`,
+                                  top: `${Math.max(5, Math.min(85, placement.position_y || 50))}%`,
+                                  fontSize: isTree ? 36 : isGround ? 16 : 24,
+                                  zIndex: placement.z_index || i,
+                                }}>
+                                {icon}
+                              </div>
+                            );
+                          })
+                        : PLANTS_DB.slice(0, 8).map((plant, i) => (
+                            <div key={plant.id} className="design-plant" title={`Drag to reposition: ${plant.name}`}
+                              style={{
+                                left: `${8 + (i * 12)}%`, top: `${10 + (i % 3) * 25}%`,
+                                fontSize: plant.type === "tree" ? 36 : plant.type === "groundcover" ? 16 : 24,
+                              }}>
+                              {plant.img}
+                            </div>
+                          ))
+                      }
+                    </div>
+                  </div>
+                  <p style={{ fontSize: 12, color: "var(--filo-grey)", marginTop: 8, textAlign: "center" }}>
+                    Drag plants to reposition - Click to select - Desktop only
+                  </p>
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Plant Palette</h3></div>
+                <div className="card-body">
+                  <div className="plant-grid">
+                    {PLANTS_DB.slice(0, 6).map(p => (
+                      <div key={p.id} className="plant-card">
+                        <div className="plant-icon">{p.img}</div>
+                        <div className="plant-name">{p.name}</div>
+                        <div className="plant-meta">{p.size} - {p.sun} sun</div>
+                        <div className="plant-price">{fmt(p.price)}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div className="chat-panel" style={{ height: 500 }}>
+                <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--filo-light)", fontWeight: 600, fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}>
+                  AI Design Assistant
+                  {chatLoading && <div className="spinner" style={{ width: 16, height: 16 }}></div>}
+                </div>
+                <div className="chat-messages">
+                  {chatMessages.map((msg, i) => (
+                    <div key={i} className={`chat-msg ${msg.role === "user" ? "user" : "ai"}`}>
+                      {msg.text}
+                    </div>
+                  ))}
+                  {chatLoading && (
+                    <div className="chat-msg ai" style={{ opacity: 0.6 }}>
+                      <span style={{ animation: "pulse 1.2s infinite" }}>Thinking...</span>
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+                <div className="chat-input-bar">
+                  <input
+                    className="form-input"
+                    placeholder="Type a design change..."
+                    style={{ flex: 1 }}
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleChatSend(); }}
+                    disabled={chatLoading}
+                  />
+                  <button className="btn btn-primary btn-sm" onClick={handleChatSend} disabled={chatLoading || !chatInput.trim()}>
+                    {chatLoading ? "..." : "Send"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="card" style={{ marginTop: 16 }}>
+                <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", fontSize: 16 }}>Revision History</h3></div>
+                <div className="card-body" style={{ padding: "12px 16px" }}>
+                  {["Initial AI Design", "Swapped 2 Loropetalum \u2192 Rose", "Added 3 Gulf Muhly"].map((rev, i) => (
+                    <div key={i} style={{ padding: "8px 0", borderBottom: "1px solid var(--filo-light)", display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                      <span>v{3 - i}: {rev}</span>
+                      <button className="btn btn-ghost btn-sm" style={{ padding: "2px 8px", fontSize: 11 }}>Revert</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 8: Estimate */}
+        {step === 8 && (
+          <div className="scale-in" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+            <div className="card">
+              <div className="card-header">
+                <h3 style={{ fontFamily: "var(--font-display)" }}>📋 Bill of Materials (Internal)</h3>
+              </div>
+              <div className="card-body">
+                <table>
+                  <thead><tr><th>Plant</th><th>Size</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead>
+                  <tbody>
+                    {PLANTS_DB.slice(0, 6).map(p => {
+                      const qty = Math.floor(Math.random() * 5) + 1;
+                      return (
+                        <tr key={p.id}>
+                          <td>{p.img} {p.name}</td>
+                          <td>{p.size}</td>
+                          <td>{qty}</td>
+                          <td>{fmt(p.price)}</td>
+                          <td style={{ fontWeight: 600 }}>{fmt(p.price * qty)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-header">
+                <h3 style={{ fontFamily: "var(--font-display)" }}>💰 Customer Estimate</h3>
+                <span className="status-badge" style={{ background: "#FEF3C7", color: "#92400E" }}>Draft</span>
+              </div>
+              <div className="card-body">
+                <div style={{ textAlign: "center", marginBottom: 24, paddingBottom: 16, borderBottom: "2px solid var(--filo-green)" }}>
+                  <div style={{ fontSize: 24, fontWeight: 700, fontFamily: "var(--font-display)" }}>King's Garden Landscaping</div>
+                  <div style={{ fontSize: 12, color: "var(--filo-grey)" }}>Houston, TX • (713) 555-0100 • ISA Certified Arborist TX-4800A</div>
+                </div>
+
+                <div className="estimate-section">
+                  <h4>🌱 Plant Materials</h4>
+                  {PLANTS_DB.slice(0, 4).map(p => (
+                    <div className="estimate-row" key={p.id}>
+                      <span>{p.name} ({p.size}) × {Math.floor(Math.random() * 4) + 1}</span>
+                      <span style={{ fontWeight: 500 }}>{fmt(p.price * (Math.floor(Math.random() * 4) + 1))}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="estimate-section">
+                  <h4>🛠️ Labor & Services</h4>
+                  {[["Installation Labor", 1200], ["Soil Amendments (3 cy)", 285], ["Hardwood Mulch (4 cy)", 340], ["Steel Edging (60 lf)", 480], ["Delivery", 150], ["Removal & Disposal (lump)", 350]].map(([item, cost]) => (
+                    <div className="estimate-row" key={item}>
+                      <span>{item}</span>
+                      <span style={{ fontWeight: 500 }}>{fmt(cost)}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="estimate-section" style={{ borderTop: "1px solid var(--filo-light)", paddingTop: 12 }}>
+                  <div className="estimate-row"><span>Subtotal</span><span>{fmt(3480)}</span></div>
+                  <div className="estimate-row"><span>Tax (8.25%)</span><span>{fmt(287)}</span></div>
+                  <div className="estimate-row total"><span>Total</span><span className="estimate-total">{fmt(3767)}</span></div>
+                </div>
+
+                <div style={{ marginTop: 24, display: "flex", gap: 12 }}>
+                  <button className="btn btn-primary btn-lg" style={{ flex: 1 }}>✅ Approve Estimate</button>
+                  <button className="btn btn-secondary">✏️ Edit</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 9: Submittal */}
+        {step === 9 && (
+          <div className="scale-in">
+            <div className="submittal-preview">
+              <div className="submittal-cover">
+                <div style={{ fontSize: 48, marginBottom: 16 }}>🌿</div>
+                <h1>Landscape Design Proposal</h1>
+                <p style={{ fontFamily: "var(--font-display)", fontSize: 18, color: "var(--filo-grey)", marginBottom: 24 }}>
+                  Prepared for Johnson Residence
+                </p>
+                <div style={{ fontSize: 14, color: "var(--filo-grey)" }}>
+                  <strong>King's Garden Landscaping</strong><br />
+                  Houston, TX • (713) 555-0100<br />
+                  ISA Certified Arborist TX-4800A
+                </div>
+                <div style={{ marginTop: 16, fontSize: 13, color: "var(--filo-silver)" }}>March 28, 2026</div>
+              </div>
+
+              <div className="submittal-section">
+                <h3>Scope of Work</h3>
+                <p style={{ lineHeight: 1.8, color: "var(--filo-slate)" }}>
+                  King's Garden Landscaping proposes a comprehensive landscape renovation for the front yard beds at 4521 River Oaks Blvd.
+                  The design embraces a naturalistic cottage aesthetic, integrating native and adapted species selected for the property's
+                  full-sun exposure and the Gulf Coast climate. Existing mature specimens in good condition will be preserved to maintain
+                  the established character of the landscape, while declining plantings will be removed and replaced with vigorous new material.
+                  The layered planting scheme positions low-profile groundcovers at the border, mid-height flowering shrubs through the
+                  center mass, and a signature Crape Myrtle specimen to anchor the composition and provide vertical interest. All plant
+                  material is specified at container sizes appropriate for immediate impact while allowing room for natural maturation.
+                </p>
+              </div>
+
+              <div className="submittal-section">
+                <h3>Plant Profiles</h3>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+                  {PLANTS_DB.slice(0, 4).map(p => (
+                    <div key={p.id} style={{ padding: 20, border: "1px solid var(--filo-light)", borderRadius: "var(--radius)" }}>
+                      <div style={{ fontSize: 40, marginBottom: 8 }}>{p.img}</div>
+                      <h4 style={{ fontFamily: "var(--font-display)", fontSize: 16, marginBottom: 4 }}>{p.name}</h4>
+                      <div style={{ fontSize: 12, color: "var(--filo-grey)", marginBottom: 8 }}>
+                        {p.bloom} • {p.water} water • {p.sun} sun
+                      </div>
+                      <p style={{ fontSize: 13, fontStyle: "italic", color: "var(--filo-slate)", lineHeight: 1.6 }}>{p.desc}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="submittal-section">
+                <h3>Before & After</h3>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <div style={{ background: "linear-gradient(180deg, #87CEEB 0%, #8B7355 100%)", height: 200, borderRadius: "var(--radius)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: 600 }}>
+                    📷 Before
+                  </div>
+                  <div style={{ background: "linear-gradient(180deg, #87CEEB 0%, #6B8E5C 100%)", height: 200, borderRadius: "var(--radius)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: 600 }}>
+                    🎨 After (AI Render)
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ textAlign: "center", paddingTop: 32, borderTop: "2px solid var(--filo-green)" }}>
+                <strong>King's Garden Landscaping</strong><br />
+                <span style={{ fontSize: 13, color: "var(--filo-grey)" }}>
+                  Licensed & Insured • ISA Certified Arborist TX-4800A • LI#25321
+                </span>
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "center", gap: 12, marginTop: 24 }}>
+              <button className="btn btn-primary btn-lg">📥 Download PDF</button>
+              <button className="btn btn-secondary btn-lg">📧 Email to Client</button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 10: CRM Push */}
+        {step === 10 && (
+          <div className="card scale-in" style={{ maxWidth: 600, margin: "0 auto" }}>
+            <div className="card-body" style={{ textAlign: "center", padding: 60 }}>
+              <div style={{ fontSize: 64, marginBottom: 16 }}>✅</div>
+              <h3 style={{ fontFamily: "var(--font-display)", fontSize: 28, marginBottom: 8 }}>Project Complete!</h3>
+              <p style={{ color: "var(--filo-grey)", marginBottom: 32, maxWidth: 400, margin: "0 auto 32px" }}>
+                All documents generated and synced to your CRM.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 360, margin: "0 auto", textAlign: "left" }}>
+                {[
+                  ["✅", "Client profile created in Jobber"],
+                  ["✅", "Estimate uploaded to client notes"],
+                  ["✅", "Submittal PDF uploaded to client notes"],
+                  ["✅", "Before/After images attached"],
+                  ["✅", "Bill of Materials saved internally"],
+                ].map(([icon, text], i) => (
+                  <div key={i} className="fade-in" style={{ display: "flex", gap: 12, alignItems: "center", padding: 12, background: "var(--filo-green-pale)", borderRadius: "var(--radius-sm)", animationDelay: `${i * 0.15}s` }}>
+                    <span>{icon}</span>
+                    <span style={{ fontSize: 14 }}>{text}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 32, display: "flex", gap: 12, justifyContent: "center" }}>
+                <button className="btn btn-primary">📥 Download All</button>
+                <button className="btn btn-secondary">Open in CRM →</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Plant Library ───────────────────────────────────────────────
+function PlantLibraryPage() {
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("all");
+  const filtered = PLANTS_DB.filter(p =>
+    (filter === "all" || p.type === filter) &&
+    (search === "" || p.name.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  return (
+    <div className="fade-in">
+      <div className="page-header">
+        <div>
+          <h2>Plant Library</h2>
+          <p>{PLANTS_DB.length} plants in your availability list</p>
+        </div>
+        <button className="btn btn-primary">+ Add Plant</button>
+      </div>
+      <div className="page-body">
+        <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
+          <input className="form-input" style={{ maxWidth: 300 }} placeholder="Search plants..."
+            value={search} onChange={e => setSearch(e.target.value)} />
+          <div className="pill-group">
+            {[["all", "All"], ["shrub", "Shrubs"], ["tree", "Trees"], ["perennial", "Perennials"], ["groundcover", "Groundcover"], ["ornamental_grass", "Grasses"]].map(([val, label]) => (
+              <span key={val} className={cn("pill", filter === val && "active")} onClick={() => setFilter(val)}>{label}</span>
+            ))}
+          </div>
+        </div>
+        <div className="plant-grid">
+          {filtered.map((p, i) => (
+            <div key={p.id} className="plant-card fade-in" style={{ animationDelay: `${i * 0.04}s` }}>
+              <div className="plant-icon">{p.img}</div>
+              <div className="plant-name">{p.name}</div>
+              <div className="plant-meta">{p.size} • {p.sun} sun • {p.mature_h} tall</div>
+              <div style={{ fontSize: 12, color: "var(--filo-grey)", marginTop: 4 }}>{p.bloom}</div>
+              <div className="plant-price">{fmt(p.price)}</div>
+              <p style={{ fontSize: 11, color: "var(--filo-grey)", marginTop: 8, fontStyle: "italic", lineHeight: 1.4 }}>{p.desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Estimates Page ──────────────────────────────────────────────
+function EstimatesPage() {
+  return (
+    <div className="fade-in">
+      <div className="page-header">
+        <div><h2>Estimates</h2><p>Manage all project estimates</p></div>
+      </div>
+      <div className="page-body">
+        <div className="stat-grid">
+          <div className="stat-card"><div className="stat-label">Pending Approval</div><div className="stat-value">5</div></div>
+          <div className="stat-card"><div className="stat-label">Approved</div><div className="stat-value">18</div></div>
+          <div className="stat-card"><div className="stat-label">Total Value</div><div className="stat-value">{fmt(186400)}</div></div>
+          <div className="stat-card"><div className="stat-label">Win Rate</div><div className="stat-value">72%</div></div>
+        </div>
+        <div className="card">
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Project</th><th>Client</th><th>Amount</th><th>Status</th><th>Date</th><th></th></tr></thead>
+              <tbody>
+                {MOCK_PROJECTS.map(p => (
+                  <tr key={p.id}>
+                    <td style={{ fontWeight: 500 }}>{p.id}</td>
+                    <td>{p.client}</td>
+                    <td style={{ fontWeight: 600 }}>{fmt(p.total)}</td>
+                    <td>
+                      <span className="status-badge" style={{ background: STATUS_MAP[p.status].color + "18", color: STATUS_MAP[p.status].color }}>
+                        {STATUS_MAP[p.status].label}
+                      </span>
+                    </td>
+                    <td>{p.date}</td>
+                    <td><button className="btn btn-ghost btn-sm">View →</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Submittals Page ─────────────────────────────────────────────
+function SubmittalsPage() {
+  return (
+    <div className="fade-in">
+      <div className="page-header">
+        <div><h2>Submittals</h2><p>Professional design proposal documents</p></div>
+      </div>
+      <div className="page-body">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+          {MOCK_PROJECTS.slice(0, 3).map((p, i) => (
+            <div key={p.id} className="card fade-in" style={{ animationDelay: `${i * 0.08}s` }}>
+              <div style={{ height: 160, background: `linear-gradient(135deg, ${STATUS_MAP[p.status].color}22, var(--filo-green-pale))`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <span style={{ fontSize: 48 }}>📄</span>
+              </div>
+              <div className="card-body">
+                <div style={{ fontWeight: 600 }}>{p.client}</div>
+                <div style={{ fontSize: 13, color: "var(--filo-grey)" }}>{p.address}</div>
+                <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+                  <button className="btn btn-primary btn-sm" style={{ flex: 1 }}>📥 Download</button>
+                  <button className="btn btn-secondary btn-sm">📧 Email</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── CRM Integration ─────────────────────────────────────────────
+function CRMPage() {
+  const [connected, setConnected] = useState("Jobber");
+  return (
+    <div className="fade-in">
+      <div className="page-header">
+        <div><h2>CRM Integration</h2><p>Connect FILO to your CRM for seamless data sync</p></div>
+      </div>
+      <div className="page-body">
+        <div className="card" style={{ marginBottom: 24 }}>
+          <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Connected CRM</h3></div>
+          <div className="card-body">
+            <div style={{ display: "flex", alignItems: "center", gap: 16, padding: 16, background: "var(--filo-green-pale)", borderRadius: "var(--radius-sm)", marginBottom: 16 }}>
+              <span style={{ fontSize: 32 }}>✅</span>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 18 }}>{connected}</div>
+                <div style={{ fontSize: 13, color: "var(--filo-green)" }}>Connected • Last sync 2 minutes ago</div>
+              </div>
+              <button className="btn btn-secondary btn-sm" style={{ marginLeft: "auto" }}>Disconnect</button>
+            </div>
+            <div style={{ fontSize: 13, color: "var(--filo-grey)", padding: 12, background: "var(--filo-offwhite)", borderRadius: "var(--radius-sm)" }}>
+              ℹ️ One-way sync: FILO → CRM. Project data, estimates, and submittals are automatically pushed to your CRM. FILO never modifies existing CRM data.
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Available CRM Integrations</h3></div>
+          <div className="card-body">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
+              {CRM_OPTIONS.map(crm => (
+                <div key={crm} style={{
+                  padding: 16, border: `1px solid ${crm === connected ? "var(--filo-green)" : "var(--filo-light)"}`,
+                  borderRadius: "var(--radius-sm)", textAlign: "center", cursor: "pointer",
+                  background: crm === connected ? "var(--filo-green-pale)" : "white",
+                }} onClick={() => setConnected(crm)}>
+                  <div style={{ fontWeight: 500, marginBottom: 4 }}>{crm}</div>
+                  <div style={{ fontSize: 12, color: crm === connected ? "var(--filo-green)" : "var(--filo-grey)" }}>
+                    {crm === connected ? "✅ Connected" : "Click to connect"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Clients Page ────────────────────────────────────────────────
+function ClientsPage() {
+  const clients = [
+    { name: "Johnson Residence", address: "4521 River Oaks Blvd", phone: "(713) 555-0199", projects: 2, total: 18450 },
+    { name: "Chen Family Estate", address: "1892 Memorial Dr", phone: "(713) 555-0244", projects: 1, total: 28900 },
+    { name: "Martinez Property", address: "7744 Tanglewood Ln", phone: "(713) 555-0177", projects: 3, total: 42600 },
+    { name: "Williams Home", address: "3310 Piping Rock Ln", phone: "(713) 555-0155", projects: 1, total: 34200 },
+  ];
+
+  return (
+    <div className="fade-in">
+      <div className="page-header">
+        <div><h2>Clients</h2><p>{clients.length} clients in your database</p></div>
+        <button className="btn btn-primary">+ Add Client</button>
+      </div>
+      <div className="page-body">
+        <div className="card">
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Client</th><th>Address</th><th>Phone</th><th>Projects</th><th>Revenue</th><th></th></tr></thead>
+              <tbody>
+                {clients.map((c, i) => (
+                  <tr key={i}>
+                    <td style={{ fontWeight: 500 }}>{c.name}</td>
+                    <td>{c.address}</td>
+                    <td>{c.phone}</td>
+                    <td>{c.projects}</td>
+                    <td style={{ fontWeight: 600, color: "var(--filo-green)" }}>{fmt(c.total)}</td>
+                    <td><button className="btn btn-ghost btn-sm">View →</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Settings Page ───────────────────────────────────────────────
+function SettingsPage() {
+  const [tab, setTab] = useState("company");
+  return (
+    <div className="fade-in">
+      <div className="page-header"><div><h2>Settings</h2><p>Manage your FILO workspace</p></div></div>
+      <div className="page-body">
+        <div className="tabs" style={{ maxWidth: 500 }}>
+          {[["company", "Company"], ["pricing", "Pricing"], ["tax", "Tax & Terms"], ["design", "Design Defaults"]].map(([val, label]) => (
+            <button key={val} className={cn("tab-btn", tab === val && "active")} onClick={() => setTab(val)}>{label}</button>
+          ))}
+        </div>
+
+        {tab === "company" && (
+          <div className="card" style={{ maxWidth: 600 }}>
+            <div className="card-body">
+              <div className="form-group"><label className="form-label">Company Name</label><input className="form-input" defaultValue="King's Garden Landscaping" /></div>
+              <div className="form-group">
+                <label className="form-label">Logo</label>
+                <div className="upload-zone" style={{ padding: 20 }}><p>📷 Click to upload company logo</p></div>
+              </div>
+              <div className="form-group"><label className="form-label">Phone</label><input className="form-input" defaultValue="(713) 555-0100" /></div>
+              <div className="form-group"><label className="form-label">Email</label><input className="form-input" defaultValue="info@kingsgarden.com" /></div>
+              <div className="form-group"><label className="form-label">License Number</label><input className="form-input" defaultValue="TX-4800A / LI#25321" /></div>
+              <div className="form-group"><label className="form-label">Geographic Location</label><input className="form-input" defaultValue="Houston, TX (USDA Zone 9a)" /></div>
+              <button className="btn btn-primary">Save Changes</button>
+            </div>
+          </div>
+        )}
+
+        {tab === "pricing" && (
+          <div className="card" style={{ maxWidth: 600 }}>
+            <div className="card-body">
+              <div className="form-group">
+                <label className="form-label">Labor Pricing Method</label>
+                <select className="form-input">
+                  <option>Per Gallon</option>
+                  <option>Per Estimated Man Hours</option>
+                  <option>Lump Sum</option>
+                </select>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div className="form-group"><label className="form-label">Material Markup %</label><input className="form-input" defaultValue="35" /></div>
+                <div className="form-group"><label className="form-label">Delivery Fee</label><input className="form-input" defaultValue="150.00" /></div>
+                <div className="form-group"><label className="form-label">Soil Amendment / cy</label><input className="form-input" defaultValue="95.00" /></div>
+                <div className="form-group"><label className="form-label">Mulch / cy</label><input className="form-input" defaultValue="85.00" /></div>
+                <div className="form-group"><label className="form-label">Edging / lf</label><input className="form-input" defaultValue="8.00" /></div>
+                <div className="form-group"><label className="form-label">Removal Base Fee</label><input className="form-input" defaultValue="350.00" /></div>
+              </div>
+              <button className="btn btn-primary">Save Pricing</button>
+            </div>
+          </div>
+        )}
+
+        {tab === "tax" && (
+          <div className="card" style={{ maxWidth: 600 }}>
+            <div className="card-body">
+              <div className="form-group">
+                <label className="form-label">Include Tax on Estimates?</label>
+                <div className="toggle-wrap" style={{ marginTop: 8 }}>
+                  <div className="toggle on"></div><span>Yes</span>
+                </div>
+              </div>
+              <div className="form-group"><label className="form-label">Tax Rate (%)</label><input className="form-input" defaultValue="8.25" /></div>
+              <div className="form-group">
+                <label className="form-label">Default Terms & Conditions</label>
+                <textarea className="form-input" rows={6} defaultValue="50% deposit required to schedule work. Balance due upon completion. All plant material guaranteed for 1 year from installation date with proper watering. Payment by check, ACH, or credit card." />
+              </div>
+              <button className="btn btn-primary">Save</button>
+            </div>
+          </div>
+        )}
+
+        {tab === "design" && (
+          <div className="card" style={{ maxWidth: 600 }}>
+            <div className="card-body">
+              <div className="form-group">
+                <label className="form-label">Default Design Style</label>
+                <div className="pill-group">
+                  {["Formal / Symmetrical", "Naturalistic / Cottage", "Modern / Minimalist", "Tropical", "Desert / Xeriscape"].map(opt => (
+                    <span key={opt} className={cn("pill", opt === "Naturalistic / Cottage" && "active")}>{opt}</span>
+                  ))}
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Nursery Availability List</label>
+                <div className="upload-zone" style={{ padding: 20 }}><p>📄 Upload PDF, Excel, CSV, or plain text</p></div>
+              </div>
+              <button className="btn btn-primary">Save Defaults</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Billing Page ────────────────────────────────────────────────
+function BillingPage() {
+  return (
+    <div className="fade-in">
+      <div className="page-header"><div><h2>Billing</h2><p>Manage your FILO subscription</p></div></div>
+      <div className="page-body">
+        <div className="card" style={{ marginBottom: 24, background: "linear-gradient(135deg, var(--filo-charcoal), var(--filo-slate))", color: "white", border: "none" }}>
+          <div className="card-body" style={{ padding: 32 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
+              <div>
+                <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, opacity: 0.6, marginBottom: 4 }}>Current Plan</div>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 32, fontWeight: 700 }}>FILO Professional</div>
+                <div style={{ opacity: 0.7, marginTop: 4 }}>3 users included • Active since Jan 2026</div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 40, fontWeight: 700 }}>$2,500</div>
+                <div style={{ opacity: 0.6 }}>/month</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <div className="card">
+            <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", fontSize: 16 }}>Users</h3></div>
+            <div className="card-body">
+              {[["Esteph Christison", "Admin", "Active"], ["Jack Christison", "Estimator", "Active"], ["Maria Garcia", "Estimator", "Active"]].map(([name, role, status], i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid var(--filo-light)" }}>
+                  <div className="avatar" style={{ width: 32, height: 32, fontSize: 12 }}>{name.split(" ").map(n => n[0]).join("")}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 500, fontSize: 14 }}>{name}</div>
+                    <div style={{ fontSize: 12, color: "var(--filo-grey)" }}>{role}</div>
+                  </div>
+                  <span className="status-badge" style={{ background: "#D1FAE5", color: "#059669" }}>{status}</span>
+                </div>
+              ))}
+              <button className="btn btn-secondary btn-sm" style={{ marginTop: 12 }}>+ Add User ($500/mo)</button>
+            </div>
+          </div>
+          <div className="card">
+            <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", fontSize: 16 }}>Payment Method</h3></div>
+            <div className="card-body">
+              <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 16, background: "var(--filo-offwhite)", borderRadius: "var(--radius-sm)", marginBottom: 16 }}>
+                <span style={{ fontSize: 24 }}>💳</span>
+                <div>
+                  <div style={{ fontWeight: 500 }}>Visa ending in 4242</div>
+                  <div style={{ fontSize: 12, color: "var(--filo-grey)" }}>Expires 09/2028</div>
+                </div>
+              </div>
+              <button className="btn btn-secondary btn-sm">Update Payment Method</button>
+              <div style={{ marginTop: 16, padding: 12, background: "#FEF3C7", borderRadius: "var(--radius-sm)", fontSize: 12, color: "#92400E" }}>
+                ⚠️ If your subscription lapses, all account access will be locked. You can still export documents before cancellation.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Team Page ───────────────────────────────────────────────────
+function TeamPage() {
+  return (
+    <div className="fade-in">
+      <div className="page-header">
+        <div><h2>Team</h2><p>Manage users and permissions</p></div>
+        <button className="btn btn-primary">+ Invite User</button>
+      </div>
+      <div className="page-body">
+        <div className="card">
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>User</th><th>Role</th><th>Projects</th><th>Last Active</th><th>Status</th><th></th></tr></thead>
+              <tbody>
+                {[
+                  { name: "Esteph Christison", email: "esteph@kingsgarden.com", role: "Admin", projects: 12, last: "Just now", active: true },
+                  { name: "Jack Christison", email: "jack@kingsgarden.com", role: "Estimator", projects: 8, last: "2 hours ago", active: true },
+                  { name: "Maria Garcia", email: "maria@kingsgarden.com", role: "Estimator", projects: 5, last: "Yesterday", active: true },
+                ].map((u, i) => (
+                  <tr key={i}>
+                    <td>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <div className="avatar" style={{ width: 32, height: 32, fontSize: 12 }}>{u.name.split(" ").map(n => n[0]).join("")}</div>
+                        <div><div style={{ fontWeight: 500 }}>{u.name}</div><div style={{ fontSize: 12, color: "var(--filo-grey)" }}>{u.email}</div></div>
+                      </div>
+                    </td>
+                    <td><span className="status-badge" style={{ background: u.role === "Admin" ? "var(--filo-green-pale)" : "var(--filo-offwhite)", color: u.role === "Admin" ? "var(--filo-green)" : "var(--filo-grey)" }}>{u.role}</span></td>
+                    <td>{u.projects}</td>
+                    <td style={{ fontSize: 13, color: "var(--filo-grey)" }}>{u.last}</td>
+                    <td><span className="status-badge" style={{ background: "#D1FAE5", color: "#059669" }}>Active</span></td>
+                    <td><button className="btn btn-ghost btn-sm">⋯</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Templates Page ──────────────────────────────────────────────
+function TemplatesPage() {
+  return (
+    <div className="fade-in">
+      <div className="page-header">
+        <div><h2>Design Templates</h2><p>Saved design configurations and plant palettes</p></div>
+        <button className="btn btn-primary">+ New Template</button>
+      </div>
+      <div className="page-body">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
+          {[
+            { name: "Houston Classic", style: "Formal", plants: 12, icon: "🏛️" },
+            { name: "River Oaks Cottage", style: "Naturalistic", plants: 18, icon: "🌸" },
+            { name: "Modern Minimalist", style: "Modern", plants: 6, icon: "◻️" },
+            { name: "Tropical Paradise", style: "Tropical", plants: 15, icon: "🌴" },
+          ].map((t, i) => (
+            <div key={i} className="card fade-in" style={{ cursor: "pointer", animationDelay: `${i * 0.06}s` }}>
+              <div style={{ height: 120, background: "linear-gradient(135deg, var(--filo-green-pale), var(--filo-offwhite))", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 48 }}>{t.icon}</div>
+              <div className="card-body">
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>{t.name}</div>
+                <div style={{ fontSize: 13, color: "var(--filo-grey)" }}>{t.style} • {t.plants} plants</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Login Page ──────────────────────────────────────────────────
+function LoginPage({ onLogin }) {
+  const [email, setEmail] = useState("esteph@kingsgarden.com");
+  const [password, setPassword] = useState("");
+
+  return (
+    <div className="login-page">
+      <div className="login-left">
+        <div style={{ maxWidth: 480, textAlign: "center" }}>
+          <div style={{ fontSize: 64, marginBottom: 16 }}>🌿</div>
+          <h1 style={{ fontFamily: "var(--font-display)", fontSize: 48, marginBottom: 16, lineHeight: 1.1 }}>FILO</h1>
+          <p style={{ fontSize: 20, opacity: 0.8, fontFamily: "var(--font-display)" }}>
+            AI-Powered Landscape Design
+          </p>
+          <p style={{ fontSize: 15, opacity: 0.5, marginTop: 8, maxWidth: 360, margin: "8px auto 0" }}>
+            Generate photorealistic designs, professional estimates, and beautiful submittals — all in one platform.
+          </p>
+        </div>
+      </div>
+      <div className="login-right">
+        <div className="login-card">
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, marginBottom: 4 }}>Welcome back</h2>
+          <p style={{ fontSize: 14, color: "var(--filo-grey)", marginBottom: 32 }}>Sign in to your FILO workspace</p>
+          <div className="form-group">
+            <label className="form-label">Email</label>
+            <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Password</label>
+            <input className="form-input" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} />
+          </div>
+          <button className="btn btn-primary btn-lg" style={{ width: "100%", marginBottom: 16 }} onClick={onLogin}>Sign In</button>
+          <p style={{ fontSize: 13, color: "var(--filo-grey)", textAlign: "center" }}>
+            New to FILO? <span style={{ color: "var(--filo-green)", cursor: "pointer", fontWeight: 500 }}>Start your free trial →</span>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Onboarding Wizard ───────────────────────────────────────────
+function OnboardingWizard({ onComplete }) {
+  const [step, setStep] = useState(1);
+  const totalSteps = 8;
+  const titles = ["Company Info", "Contact", "Location & Style", "Nursery List", "Pricing", "Tax & Terms", "CRM Connect", "Invite Team"];
+
+  return (
+    <div className="onboarding-bg">
+      <div className="onboarding-card">
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 32 }}>
+          <span style={{ fontSize: 24 }}>🌿</span>
+          <span style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 600 }}>FILO Setup</span>
+          <span style={{ marginLeft: "auto", fontSize: 13, color: "var(--filo-grey)" }}>{step} of {totalSteps}</span>
+        </div>
+
+        <div className="wizard-progress">
+          {Array.from({ length: totalSteps }, (_, i) => (
+            <React.Fragment key={i}>
+              <div className={cn("wizard-step-dot", i < step - 1 ? "done" : i === step - 1 ? "active" : "pending")}>
+                {i < step - 1 ? "✓" : i + 1}
+              </div>
+              {i < totalSteps - 1 && <div className={cn("wizard-connector", i < step - 1 && "done")}></div>}
+            </React.Fragment>
+          ))}
+        </div>
+
+        <h3 className="wizard-title">{titles[step - 1]}</h3>
+        <p className="wizard-subtitle">
+          {step === 1 && "Let's set up your company profile."}
+          {step === 2 && "How can your clients reach you?"}
+          {step === 3 && "Where are you located and what's your style?"}
+          {step === 4 && "Upload your nursery availability (optional)."}
+          {step === 5 && "Set your default pricing framework."}
+          {step === 6 && "Configure tax and default terms."}
+          {step === 7 && "Connect your CRM software."}
+          {step === 8 && "Invite your team members."}
+        </p>
+
+        {step === 1 && (
+          <div>
+            <div className="form-group"><label className="form-label">Company Name</label><input className="form-input" placeholder="King's Garden Landscaping" /></div>
+            <div className="form-group"><label className="form-label">Company Logo</label><div className="upload-zone" style={{ padding: 20 }}><p>📷 Upload logo</p></div></div>
+          </div>
+        )}
+        {step === 2 && (
+          <div>
+            <div className="form-group"><label className="form-label">Phone</label><input className="form-input" placeholder="(713) 555-0100" /></div>
+            <div className="form-group"><label className="form-label">Email</label><input className="form-input" placeholder="info@company.com" /></div>
+            <div className="form-group"><label className="form-label">License Number</label><input className="form-input" placeholder="Optional" /></div>
+          </div>
+        )}
+        {step === 3 && (
+          <div>
+            <div className="form-group"><label className="form-label">Geographic Location</label><input className="form-input" placeholder="Houston, TX" /></div>
+            <div className="form-group">
+              <label className="form-label">Default Design Style</label>
+              <div className="pill-group">
+                {["Formal", "Naturalistic", "Modern", "Tropical", "Xeriscape"].map(s => (
+                  <span key={s} className="pill">{s}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+        {step === 4 && (
+          <div>
+            <div className="upload-zone"><div className="icon">📄</div><p>Upload nursery availability list<br/><span style={{ fontSize: 12 }}>PDF, Excel, CSV, or plain text</span></p></div>
+            <p style={{ fontSize: 12, color: "var(--filo-grey)", marginTop: 12, textAlign: "center" }}>Skip this step to use FILO's default local plant database</p>
+          </div>
+        )}
+        {step === 5 && (
+          <div>
+            <div className="form-group">
+              <label className="form-label">Labor Pricing Method</label>
+              <select className="form-input"><option>Per Gallon</option><option>Per Estimated Man Hours</option><option>Lump Sum</option></select>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="form-group"><label className="form-label">Material Markup %</label><input className="form-input" defaultValue="35" /></div>
+              <div className="form-group"><label className="form-label">Delivery Fee</label><input className="form-input" defaultValue="150" /></div>
+            </div>
+          </div>
+        )}
+        {step === 6 && (
+          <div>
+            <div className="form-group">
+              <label className="form-label">Include Tax?</label>
+              <div className="toggle-wrap" style={{ marginTop: 4 }}><div className="toggle on"></div><span>Yes</span></div>
+            </div>
+            <div className="form-group"><label className="form-label">Tax Rate</label><input className="form-input" defaultValue="8.25%" /></div>
+            <div className="form-group"><label className="form-label">Default Terms</label><textarea className="form-input" rows={3} placeholder="50% deposit required..." /></div>
+          </div>
+        )}
+        {step === 7 && (
+          <div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+              {CRM_OPTIONS.slice(0, 9).map(crm => (
+                <div key={crm} style={{ padding: 12, border: "1px solid var(--filo-light)", borderRadius: "var(--radius-sm)", textAlign: "center", cursor: "pointer", fontSize: 13 }}>{crm}</div>
+              ))}
+            </div>
+            <div className="form-group" style={{ marginTop: 16 }}>
+              <label className="form-label">API Key</label>
+              <input className="form-input" placeholder="Paste your CRM API key" />
+            </div>
+          </div>
+        )}
+        {step === 8 && (
+          <div>
+            <p style={{ fontSize: 14, color: "var(--filo-grey)", marginBottom: 16 }}>Your plan includes 3 users. Additional users are $500/mo each.</p>
+            {[1, 2].map(i => (
+              <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <input className="form-input" placeholder={`Team member ${i} email`} style={{ flex: 1 }} />
+                <select className="form-input" style={{ width: 140 }}><option>Estimator</option><option>Admin</option></select>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 32 }}>
+          {step > 1 ? <button className="btn btn-secondary" onClick={() => setStep(s => s - 1)}>← Back</button> : <div></div>}
+          {step < totalSteps ? (
+            <button className="btn btn-primary" onClick={() => setStep(s => s + 1)}>Continue →</button>
+          ) : (
+            <button className="btn btn-gold btn-lg" onClick={onComplete}>🚀 Launch FILO</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MAIN APP
+// ═══════════════════════════════════════════════════════════════════
+export default function App() {
+  const [view, setView] = useState("login"); // login | onboarding | app
+  const [page, setPage] = useState("dashboard");
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const pages = {
+    dashboard: <DashboardPage setPage={setPage} />,
+    projects: <ProjectsPage setPage={setPage} />,
+    "new-project": <NewProjectPage />,
+    clients: <ClientsPage />,
+    plants: <PlantLibraryPage />,
+    templates: <TemplatesPage />,
+    estimates: <EstimatesPage />,
+    submittals: <SubmittalsPage />,
+    crm: <CRMPage />,
+    settings: <SettingsPage />,
+    billing: <BillingPage />,
+    team: <TeamPage />,
+  };
+
+  if (view === "login") return (
+    <>
+      <style>{STYLES}</style>
+      <LoginPage onLogin={() => setView("app")} />
+    </>
+  );
+
+  if (view === "onboarding") return (
+    <>
+      <style>{STYLES}</style>
+      <OnboardingWizard onComplete={() => setView("app")} />
+    </>
+  );
+
+  return (
+    <>
+      <style>{STYLES}</style>
+      <div className="app-layout">
+        <Sidebar page={page} setPage={setPage} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
+        {mobileOpen && <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 45 }} onClick={() => setMobileOpen(false)} />}
+        <div className={cn("main-content")}>
+          <TopBar page={page} setMobileOpen={setMobileOpen} />
+          {pages[page] || <DashboardPage setPage={setPage} />}
+        </div>
+      </div>
+    </>
+  );
+}
