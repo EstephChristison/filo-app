@@ -926,53 +926,23 @@ function NewProjectPage() {
               }
             }
 
-            // Auto-trigger AI visual render (gpt-image-1 inpainting) after plant list is ready
-            if (finalPlants.length > 0 && !designRenderUrl) {
+            // Auto-trigger AI visual render ONLY if no bed prep was done
+            // If user drew removal areas, they MUST use the manual "Generate Design Render" button
+            // at step 6 — this ensures the removal preview image is used, not the original photo.
+            const didBedPrep = removalPreviewRef.current || (drawPaths && drawPaths.length > 0);
+            if (finalPlants.length > 0 && !designRenderUrl && !didBedPrep) {
               const photoUrls = Object.values(uploadedPhotos || {}).flat().map(p => p?.file?.cdn_url || p?.cdn_url).filter(Boolean);
               if (photoUrls.length > 0) {
                 setGeneratingRender(true);
-                // Build mask from drawPaths if available
-                let maskDataUrl = null;
-                if (drawPaths && drawPaths.length > 0) {
-                  try {
-                    const canvas = document.createElement('canvas');
-                    canvas.width = 1024; canvas.height = 1024;
-                    const ctx = canvas.getContext('2d');
-                    ctx.fillStyle = '#ffffff';
-                    ctx.fillRect(0, 0, 1024, 1024);
-                    ctx.fillStyle = '#000000';
-                    ctx.strokeStyle = '#000000';
-                    ctx.lineWidth = 50;
-                    ctx.lineCap = 'round';
-                    ctx.lineJoin = 'round';
-                    for (const rawPath of drawPaths) {
-                      const path = Array.isArray(rawPath) ? rawPath : (rawPath?.points || []);
-                      if (path.length < 2) continue;
-                      ctx.beginPath();
-                      ctx.moveTo(path[0].x * 1.024, path[0].y * 1.024);
-                      for (let i = 1; i < path.length; i++) {
-                        ctx.lineTo(path[i].x * 1.024, path[i].y * 1.024);
-                      }
-                      ctx.closePath();
-                      ctx.fill();
-                      ctx.stroke();
-                    }
-                    maskDataUrl = canvas.toDataURL('image/png');
-                  } catch (e) { console.log('Mask generation failed:', e.message); }
-                }
-                // Fire render in background — don't block wizard advancement
-                // Use removal preview if available (plants already removed), otherwise original photo
-                // CRITICAL: Read from ref, not state — state may be stale in this closure
-                const currentRemovalPreview = removalPreviewRef.current;
-                console.log('[auto-render] removalPreviewRef.current exists:', !!currentRemovalPreview, 'state removalPreview:', !!removalPreview);
+                console.log('[auto-render] No bed prep done — auto-rendering with original photo');
                 api.designRender.generate(
-                  currentRemovalPreview || photoUrls[0],
+                  photoUrls[0],
                   finalPlants,
                   detectedPlants.filter(p => plantMarks[p.id] !== 'remove'),
                   detectedPlants.filter(p => plantMarks[p.id] === 'remove'),
                   project.style || 'naturalistic',
                   design?.narrative || design?.design_notes || '',
-                  maskDataUrl
+                  null
                 ).then(result => {
                   setDesignRenderUrl(result.renderUrl);
                 }).catch(err => {
@@ -981,6 +951,8 @@ function NewProjectPage() {
                   setGeneratingRender(false);
                 });
               }
+            } else if (didBedPrep) {
+              console.log('[auto-render] SKIPPED — bed prep was done, user must trigger render manually from step 6 to use cleaned image');
             }
           }
           setStep(6);
@@ -1713,9 +1685,11 @@ function NewProjectPage() {
               const generateFinalDesign = async () => {
                 if (!api || generatingRender) return;
                 setGeneratingRender(true);
-                console.log('[generateFinalDesign] removalPreview exists:', !!removalPreview, 'length:', removalPreview ? removalPreview.length : 0);
+                // CRITICAL: Use ref for removal preview — state may be stale in closures
+                const currentRemovalPreview = removalPreviewRef.current;
+                console.log('[generateFinalDesign] removalPreviewRef.current exists:', !!currentRemovalPreview, 'state removalPreview:', !!removalPreview);
                 console.log('[generateFinalDesign] photoUrls[0]:', photoUrls[0]?.substring(0, 60));
-                const photoToSend = removalPreview || photoUrls[0];
+                const photoToSend = currentRemovalPreview || photoUrls[0];
                 console.log('[generateFinalDesign] Sending:', photoToSend?.startsWith('data:') ? 'REMOVAL PREVIEW (data URL)' : 'ORIGINAL PHOTO (URL)');
                 try {
                   const maskDataUrl = getMaskFromDrawPaths();
