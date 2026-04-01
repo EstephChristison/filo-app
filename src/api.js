@@ -78,7 +78,7 @@ async function apiFetch(path, options = {}) {
   try {
     // 90 second timeout for AI-heavy endpoints (bed prep, design render)
     const controller = new AbortController();
-    const timeoutMs = path.includes('removal-preview') || path.includes('design-render') || path.includes('generate-design') ? 90000 : 30000;
+    const timeoutMs = path.includes('removal-preview') || path.includes('design-render') || path.includes('generate-design') || path.includes('design-adjust') ? 90000 : 30000;
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     response = await fetch(url, {
       ...options,
@@ -204,6 +204,27 @@ export const auth = {
     setTokens(data.token, data.refreshToken);
     setStoredUser(data.user);
     return data;
+  },
+
+  async forgotPassword(email) {
+    return apiFetch('/auth/forgot-password', {
+      method: 'POST',
+      body: { email },
+    });
+  },
+
+  async resetPassword(token, password) {
+    return apiFetch('/auth/reset-password', {
+      method: 'POST',
+      body: { token, password },
+    });
+  },
+
+  async forgotEmail({ firstName, lastName, phone }) {
+    return apiFetch('/auth/forgot-email', {
+      method: 'POST',
+      body: { firstName, lastName, phone },
+    });
   },
 };
 
@@ -384,6 +405,19 @@ export const designRender = {
     return apiFetch('/design-render', {
       method: 'POST',
       body: { photoUrl, designPlants, keptPlants, removedPlants, designStyle, narrative, maskDataUrl },
+    });
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// DESIGN ADJUST (pin-based localized edits)
+// ═══════════════════════════════════════════════════════════════════
+
+export const designAdjust = {
+  async apply(renderDataUrl, pinX, pinY, radius, prompt) {
+    return apiFetch('/design-adjust', {
+      method: 'POST',
+      body: { renderDataUrl, pinX, pinY, radius, prompt },
     });
   },
 };
@@ -617,6 +651,7 @@ const api = {
   existingPlants,
   removalPreview,
   designRender,
+  designAdjust,
   designs,
   estimates,
   submittals,

@@ -751,6 +751,9 @@ function NewProjectPage() {
   const [removalPreview, setRemovalPreview] = useState(null);
   const [designRenderUrl, setDesignRenderUrl] = useState(null);
   const [designMode, setDesignMode] = useState('auto');
+  const [adjustPin, setAdjustPin] = useState(null); // { x: %, y: % }
+  const [adjustPrompt, setAdjustPrompt] = useState('');
+  const [adjusting, setAdjusting] = useState(false);
   const [generatingPreview, setGeneratingPreview] = useState(false);
   const [generatingRender, setGeneratingRender] = useState(false);
   const removalCanvasRef = useRef(null);
@@ -922,7 +925,7 @@ function NewProjectPage() {
               }
             }
 
-            // Auto-trigger AI visual render (gpt-image-1 inpainting) after plant palette is ready
+            // Auto-trigger AI visual render (gpt-image-1 inpainting) after plant list is ready
             if (finalPlants.length > 0 && !designRenderUrl) {
               const photoUrls = Object.values(uploadedPhotos || {}).flat().map(p => p?.file?.cdn_url || p?.cdn_url).filter(Boolean);
               if (photoUrls.length > 0) {
@@ -1547,11 +1550,11 @@ function NewProjectPage() {
                     <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>AI Auto-Design</div>
                     <div style={{ fontSize: 12, color: "var(--filo-grey)" }}>AI selects plants & generates a photorealistic render based on your preferences</div>
                   </div>
-                  <div onClick={() => setDesignMode && setDesignMode('manual')}
-                    style={{ padding: 20, borderRadius: "var(--radius-md)", border: `2px solid ${designMode === 'manual' ? 'var(--filo-green)' : 'var(--filo-border)'}`, background: designMode === 'manual' ? 'var(--filo-green-pale)' : '#fff', cursor: "pointer", textAlign: "center", transition: "all 0.2s", opacity: 0.5 }}>
-                    <div style={{ fontSize: 28, marginBottom: 8 }}>✋</div>
-                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Manual Design</div>
-                    <div style={{ fontSize: 12, color: "var(--filo-grey)" }}>Drag & drop plants onto the bed yourself (coming soon)</div>
+                  <div onClick={() => setDesignMode && setDesignMode('adjust')}
+                    style={{ padding: 20, borderRadius: "var(--radius-md)", border: `2px solid ${designMode === 'adjust' ? 'var(--filo-green)' : 'var(--filo-border)'}`, background: designMode === 'adjust' ? 'var(--filo-green-pale)' : '#fff', cursor: "pointer", textAlign: "center", transition: "all 0.2s" }}>
+                    <div style={{ fontSize: 28, marginBottom: 8 }}>📌</div>
+                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Design Adjustments</div>
+                    <div style={{ fontSize: 12, color: "var(--filo-grey)" }}>Drop a pin on the render and describe what to change — AI edits only that area</div>
                   </div>
                 </div>
               </div>
@@ -1615,7 +1618,7 @@ function NewProjectPage() {
                             } catch (e) {}
                           }
                           setDesignPlants(finalPlants);
-                          // Auto-trigger visual render after plant palette is ready
+                          // Auto-trigger visual render after plant list is ready
                           if (finalPlants.length > 0) {
                             const photoUrls = Object.values(uploadedPhotos || {}).flat().map(p => p?.file?.cdn_url || p?.cdn_url).filter(Boolean);
                             if (photoUrls.length > 0) {
@@ -1645,7 +1648,7 @@ function NewProjectPage() {
                 {design && (
                   <div style={{ padding: 12, background: "var(--filo-green-pale)", borderRadius: "var(--radius-sm)", fontSize: 13, color: "var(--filo-green)", display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: 18 }}>✓</span>
-                    <span>AI Design complete — {designPlants.length} plants selected. {design?.narrative ? design.narrative.substring(0, 120) + '...' : ''}</span>
+                    <span>AI Design complete — {designPlants.reduce((sum, p) => sum + (p.quantity || 1), 0)} plants selected ({designPlants.length} species). {design?.narrative ? design.narrative.substring(0, 120) + '...' : ''}</span>
                   </div>
                 )}
               </div>
@@ -1654,6 +1657,7 @@ function NewProjectPage() {
             {/* AI-Generated Final Design Visualization */}
             {photoUrls.length > 0 && designPlants.length > 0 && (() => {
               const api = apiRef.current;
+              const totalPlantCount = designPlants.reduce((sum, p) => sum + (p.quantity || 1), 0);
               const removedPlantsList = detectedPlants.filter(p => plantMarks[p.id] === 'remove');
               const keptPlantsList = detectedPlants.filter(p => plantMarks[p.id] !== 'remove');
 
@@ -1691,7 +1695,7 @@ function NewProjectPage() {
                 try {
                   const maskDataUrl = getMaskFromDrawPaths();
                   const result = await api.designRender.generate(
-                    photoUrls[0],
+                    removalPreview || photoUrls[0],
                     designPlants,
                     keptPlantsList,
                     removedPlantsList,
@@ -1726,18 +1730,39 @@ function NewProjectPage() {
                         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
                           <div style={{ width: 48, height: 48, border: "4px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
                           <span style={{ color: "#fff", fontSize: 16, fontWeight: 700, textShadow: "0 2px 8px rgba(0,0,0,0.5)" }}>Rendering AI Design...</span>
-                          <span style={{ color: "rgba(255,255,255,0.8)", fontSize: 12, textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}>gpt-image-1 is painting {designPlants.length} plants onto your property</span>
+                          <span style={{ color: "rgba(255,255,255,0.8)", fontSize: 12, textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}>Gemini AI is painting {totalPlantCount} plants onto your property</span>
                         </div>
                         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
                       </div>
                     ) : designRenderUrl ? (
                       <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
-                        <img src={designRenderUrl} alt="Final Design Render" style={{ width: "100%", display: "block", borderRadius: "var(--radius-md)" }} />
+                        <img src={designRenderUrl} alt="Final Design Render"
+                          style={{ width: "100%", display: "block", borderRadius: "var(--radius-md)", cursor: designMode === 'adjust' ? 'crosshair' : 'default' }}
+                          onClick={designMode === 'adjust' ? (e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const x = ((e.clientX - rect.left) / rect.width) * 100;
+                            const y = ((e.clientY - rect.top) / rect.height) * 100;
+                            setAdjustPin({ x, y });
+                            setAdjustPrompt('');
+                          } : undefined}
+                        />
+                        {/* Pin marker */}
+                        {designMode === 'adjust' && adjustPin && (
+                          <>
+                            <div style={{ position: "absolute", left: `${adjustPin.x}%`, top: `${adjustPin.y}%`, transform: "translate(-50%, -100%)", pointerEvents: "none", zIndex: 10 }}>
+                              <div style={{ fontSize: 28, lineHeight: 1, filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.5))" }}>📌</div>
+                            </div>
+                            {/* Radius circle preview */}
+                            <div style={{ position: "absolute", left: `${adjustPin.x}%`, top: `${adjustPin.y}%`, transform: "translate(-50%, -50%)", width: "20%", height: "20%", border: "2px dashed rgba(255,255,255,0.7)", borderRadius: "50%", pointerEvents: "none", zIndex: 9, boxShadow: "0 0 0 1px rgba(0,0,0,0.3)" }} />
+                          </>
+                        )}
                         <div style={{ position: "absolute", top: 12, left: 12, background: "var(--filo-green)", color: "#fff", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
-                          FINAL DESIGN — {designPlants.length} new plants installed
+                          FINAL DESIGN — {totalPlantCount} new plants installed
                         </div>
-                        <div style={{ position: "absolute", top: 12, right: 12, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "4px 10px", borderRadius: 4, fontSize: 10, fontWeight: 700 }}>FILO AI Render</div>
-                        <button className="btn btn-sm btn-ghost" onClick={() => { setDesignRenderUrl(null); }}
+                        <div style={{ position: "absolute", top: 12, right: 12, background: designMode === 'adjust' ? "rgba(59,130,246,0.85)" : "rgba(0,0,0,0.6)", color: "#fff", padding: "4px 10px", borderRadius: 4, fontSize: 10, fontWeight: 700 }}>
+                          {designMode === 'adjust' ? 'TAP TO DROP PIN' : 'FILO AI Render'}
+                        </div>
+                        <button className="btn btn-sm btn-ghost" onClick={() => { setDesignRenderUrl(null); setAdjustPin(null); }}
                           style={{ position: "absolute", bottom: 12, left: 12, background: "rgba(0,0,0,0.7)", color: "#fff", border: "none", fontSize: 11 }}>← Redo</button>
                         <button className="btn btn-sm btn-ghost" onClick={generateFinalDesign} disabled={generatingRender}
                           style={{ position: "absolute", bottom: 12, right: 12, background: "rgba(0,0,0,0.7)", color: "#fff", border: "none", fontSize: 11 }}>
@@ -1753,21 +1778,66 @@ function NewProjectPage() {
                             style={{ fontWeight: 700, padding: "12px 32px", fontSize: 15, boxShadow: "0 4px 16px rgba(0,0,0,0.3)" }}>
                             ✨ Generate AI Design Render
                           </button>
-                          <span style={{ color: "rgba(255,255,255,0.6)", fontSize: 11, textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}>Uses gpt-image-1 to paint {designPlants.length} plants onto your property photo</span>
+                          <span style={{ color: "rgba(255,255,255,0.6)", fontSize: 11, textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}>Uses Gemini AI to paint {totalPlantCount} plants onto your property photo</span>
                         </div>
                       </div>
                     )}
                   </div>
                 </div>
+
+                {/* Design Adjustments — pin prompt panel */}
+                {designMode === 'adjust' && designRenderUrl && (
+                  <div className="card" style={{ marginBottom: 24 }}>
+                    <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Design Adjustments</h3></div>
+                    <div className="card-body">
+                      {!adjustPin ? (
+                        <p style={{ color: "var(--filo-grey)", fontSize: 14, margin: 0 }}>
+                          Tap anywhere on the rendered design above to drop a pin. The AI will only edit within a tight circle around that pin.
+                        </p>
+                      ) : (
+                        <div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                            <span style={{ fontSize: 20 }}>📌</span>
+                            <span style={{ fontSize: 13, color: "var(--filo-grey)" }}>
+                              Pin placed at ({Math.round(adjustPin.x)}%, {Math.round(adjustPin.y)}%) — tap image to reposition
+                            </span>
+                            <button className="btn btn-sm btn-ghost" onClick={() => { setAdjustPin(null); setAdjustPrompt(''); }}
+                              style={{ marginLeft: "auto", fontSize: 11, color: "var(--filo-grey)" }}>Clear pin</button>
+                          </div>
+                          <textarea className="form-input" placeholder="Describe the change, e.g. 'Replace with knockout roses' or 'Add purple liriope border here' or 'Remove this plant'"
+                            value={adjustPrompt} onChange={e => setAdjustPrompt(e.target.value)}
+                            style={{ minHeight: 60, fontSize: 13, marginBottom: 12 }} />
+                          <button className="btn btn-primary" disabled={!adjustPrompt.trim() || adjusting}
+                            onClick={async () => {
+                              setAdjusting(true);
+                              try {
+                                const api = apiRef.current;
+                                const result = await api.designAdjust.apply(designRenderUrl, adjustPin.x, adjustPin.y, 10, adjustPrompt);
+                                setDesignRenderUrl(result.renderUrl);
+                                setAdjustPin(null);
+                                setAdjustPrompt('');
+                              } catch (err) {
+                                console.error('Design adjustment failed:', err.message);
+                                alert('Adjustment failed: ' + err.message);
+                              } finally { setAdjusting(false); }
+                            }}
+                            style={{ width: "100%", fontWeight: 700, padding: "12px 24px" }}>
+                            {adjusting ? '⟳ Applying Adjustment...' : '✨ Apply Adjustment'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </>
               );
             })()}
 
             {designPlants.length > 0 && (
               <>
-                {/* Layered Plant Palette */}
+                {/* Layered Plant List */}
                 <div className="card" style={{ marginBottom: 24 }}>
-                  <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Plant Palette</h3></div>
+                  <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Plant List</h3></div>
                   <div className="card-body" style={{ padding: 0 }}>
                     {allGrouped ? (
                       layerGroups.map(({ key, plants: lp }) => (
@@ -1887,14 +1957,14 @@ function NewProjectPage() {
                       );
                     })}
                     <div style={{ position:"absolute", bottom:8, right:8, background:"rgba(255,255,255,0.9)", padding:"5px 10px", borderRadius:6, fontSize:10, color:"var(--filo-grey)" }}>
-                      {designPlants.length} plants · Click to adjust
+                      {designPlants.reduce((s, p) => s + (p.quantity || 1), 0)} plants · Click to adjust
                     </div>
                   </div>
                 </div>
               </div>
 
               <div className="card">
-                <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Plant Palette</h3></div>
+                <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Plant List</h3></div>
                 <div className="card-body">
                   <div className="plant-grid">
                     {(designPlants.length > 0 ? designPlants : PLANTS_DB).slice(0, 6).map((p, i) => (
@@ -2584,7 +2654,7 @@ function TemplatesPage() {
   return (
     <div className="fade-in">
       <div className="page-header">
-        <div><h2>Design Templates</h2><p>Saved design configurations and plant palettes</p></div>
+        <div><h2>Design Templates</h2><p>Saved design configurations and plant lists</p></div>
         <button className="btn btn-primary">+ New Template</button>
       </div>
       <div className="page-body">
