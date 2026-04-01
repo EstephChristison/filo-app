@@ -76,9 +76,9 @@ async function apiFetch(path, options = {}) {
 
   let response;
   try {
-    // 90 second timeout for AI-heavy endpoints (bed prep, design render)
+    // 3 minute timeout for AI image endpoints (Gemini can be slow)
     const controller = new AbortController();
-    const timeoutMs = path.includes('removal-preview') || path.includes('design-render') || path.includes('generate-design') || path.includes('design-adjust') ? 90000 : 30000;
+    const timeoutMs = path.includes('removal-preview') || path.includes('design-render') || path.includes('generate-design') || path.includes('design-adjust') ? 180000 : 30000;
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     response = await fetch(url, {
       ...options,
