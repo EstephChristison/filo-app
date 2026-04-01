@@ -1614,9 +1614,13 @@ function NewProjectPage() {
                           if (finalPlants.length > 0) {
                             const photoUrls = Object.values(uploadedPhotos || {}).flat().map(p => p?.file?.cdn_url || p?.cdn_url).filter(Boolean);
                             if (photoUrls.length > 0) {
+                              // Read removal preview from localStorage (immune to stale closures)
+                              const lsPreview = (() => { try { return localStorage.getItem('filo_removal_preview'); } catch(e) { return null; } })();
+                              const photoToUse = lsPreview || photoUrls[0];
+                              console.log('[step5-btn-render] Using:', lsPreview ? 'REMOVAL PREVIEW from localStorage' : 'ORIGINAL PHOTO');
                               setGeneratingRender(true);
                               api.designRender.generate(
-                                photoUrls[0], finalPlants,
+                                photoToUse, finalPlants,
                                 detectedPlants.filter(p => plantMarks[p.id] !== 'remove'),
                                 detectedPlants.filter(p => plantMarks[p.id] === 'remove'),
                                 project.style || 'naturalistic',
