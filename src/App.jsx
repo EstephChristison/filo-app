@@ -1707,10 +1707,14 @@ function NewProjectPage() {
               const generateFinalDesign = async () => {
                 if (!api || generatingRender) return;
                 setGeneratingRender(true);
+                console.log('[generateFinalDesign] removalPreview exists:', !!removalPreview, 'length:', removalPreview ? removalPreview.length : 0);
+                console.log('[generateFinalDesign] photoUrls[0]:', photoUrls[0]?.substring(0, 60));
+                const photoToSend = removalPreview || photoUrls[0];
+                console.log('[generateFinalDesign] Sending:', photoToSend?.startsWith('data:') ? 'REMOVAL PREVIEW (data URL)' : 'ORIGINAL PHOTO (URL)');
                 try {
                   const maskDataUrl = getMaskFromDrawPaths();
                   const result = await api.designRender.generate(
-                    removalPreview || photoUrls[0],
+                    photoToSend,
                     designPlants,
                     keptPlantsList,
                     removedPlantsList,
