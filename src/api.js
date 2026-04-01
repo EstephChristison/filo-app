@@ -581,7 +581,7 @@ export const ai = {
   async detectPlants(photoUrl, areaId, location, usdaZone) {
     return apiFetch('/ai/detect-plants', {
       method: 'POST',
-      body: { imageBase64: photoUrl, areaId, location, usdaZone },
+      body: { imageUrl: photoUrl, areaId, location, usdaZone },
     });
   },
 
