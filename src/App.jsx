@@ -926,17 +926,16 @@ function NewProjectPage() {
               }
             }
 
-            // Auto-trigger AI visual render ONLY if no bed prep was done
-            // If user drew removal areas, they MUST use the manual "Generate Design Render" button
-            // at step 6 — this ensures the removal preview image is used, not the original photo.
-            const didBedPrep = removalPreviewRef.current || (drawPaths && drawPaths.length > 0);
-            if (finalPlants.length > 0 && !designRenderUrl && !didBedPrep) {
+            // Auto-trigger AI visual render — check localStorage for removal preview (bulletproof, no stale closures)
+            const savedRemovalPreview = (() => { try { return localStorage.getItem('filo_removal_preview'); } catch(e) { return null; } })();
+            if (finalPlants.length > 0 && !designRenderUrl) {
               const photoUrls = Object.values(uploadedPhotos || {}).flat().map(p => p?.file?.cdn_url || p?.cdn_url).filter(Boolean);
               if (photoUrls.length > 0) {
+                const photoToUse = savedRemovalPreview || photoUrls[0];
                 setGeneratingRender(true);
-                console.log('[auto-render] No bed prep done — auto-rendering with original photo');
+                console.log('[auto-render] Using:', savedRemovalPreview ? 'REMOVAL PREVIEW from localStorage (' + Math.round(savedRemovalPreview.length/1024) + 'KB)' : 'ORIGINAL PHOTO');
                 api.designRender.generate(
-                  photoUrls[0],
+                  photoToUse,
                   finalPlants,
                   detectedPlants.filter(p => plantMarks[p.id] !== 'remove'),
                   detectedPlants.filter(p => plantMarks[p.id] === 'remove'),
@@ -951,8 +950,6 @@ function NewProjectPage() {
                   setGeneratingRender(false);
                 });
               }
-            } else if (didBedPrep) {
-              console.log('[auto-render] SKIPPED — bed prep was done, user must trigger render manually from step 6 to use cleaned image');
             }
           }
           setStep(6);
@@ -1346,7 +1343,9 @@ function NewProjectPage() {
                 maskDataUrl
               );
               setRemovalPreview(result.previewUrl);
-              removalPreviewRef.current = result.previewUrl; // Keep ref in sync
+              removalPreviewRef.current = result.previewUrl;
+              // NUCLEAR: Also store in localStorage — immune to React closure staleness
+              try { localStorage.setItem('filo_removal_preview', result.previewUrl); } catch (e) {}
             } catch (err) {
               console.error('Bed prep generation failed:', err.message);
               alert('Bed prep generation failed: ' + err.message);
@@ -1374,8 +1373,8 @@ function NewProjectPage() {
                       </button>
                       {drawPaths.length > 0 && (
                         <>
-                          <button className="btn btn-sm btn-ghost" onClick={() => { setDrawPaths(prev => prev.slice(0, -1)); setRemovalPreview(null); removalPreviewRef.current = null; }}>Undo</button>
-                          <button className="btn btn-sm btn-ghost" style={{ color: '#DC2626' }} onClick={() => { setDrawPaths([]); setRemovalPreview(null); removalPreviewRef.current = null; }}>Clear All</button>
+                          <button className="btn btn-sm btn-ghost" onClick={() => { setDrawPaths(prev => prev.slice(0, -1)); setRemovalPreview(null); removalPreviewRef.current = null; try { localStorage.removeItem('filo_removal_preview'); } catch(e){} }}>Undo</button>
+                          <button className="btn btn-sm btn-ghost" style={{ color: '#DC2626' }} onClick={() => { setDrawPaths([]); setRemovalPreview(null); removalPreviewRef.current = null; try { localStorage.removeItem('filo_removal_preview'); } catch(e){} }}>Clear All</button>
                           <span style={{ fontSize: 12, color: 'var(--filo-grey)' }}>{drawPaths.length} area{drawPaths.length !== 1 ? 's' : ''} marked</span>
                         </>
                       )}
@@ -1387,7 +1386,7 @@ function NewProjectPage() {
                         </button>
                       )}
                       {removalPreview && (
-                        <button className="btn btn-sm" onClick={() => { setRemovalPreview(null); removalPreviewRef.current = null; }} style={{ fontWeight: 600 }}>
+                        <button className="btn btn-sm" onClick={() => { setRemovalPreview(null); removalPreviewRef.current = null; try { localStorage.removeItem('filo_removal_preview'); } catch(e){} }} style={{ fontWeight: 600 }}>
                           ← Back to Draw
                         </button>
                       )}
@@ -1685,9 +1684,10 @@ function NewProjectPage() {
               const generateFinalDesign = async () => {
                 if (!api || generatingRender) return;
                 setGeneratingRender(true);
-                // CRITICAL: Use ref for removal preview — state may be stale in closures
-                const currentRemovalPreview = removalPreviewRef.current;
-                console.log('[generateFinalDesign] removalPreviewRef.current exists:', !!currentRemovalPreview, 'state removalPreview:', !!removalPreview);
+                // Read removal preview from ALL sources — localStorage is bulletproof against stale closures
+                const lsPreview = (() => { try { return localStorage.getItem('filo_removal_preview'); } catch(e) { return null; } })();
+                const currentRemovalPreview = lsPreview || removalPreviewRef.current || removalPreview;
+                console.log('[generateFinalDesign] localStorage:', !!lsPreview, 'ref:', !!removalPreviewRef.current, 'state:', !!removalPreview);
                 console.log('[generateFinalDesign] photoUrls[0]:', photoUrls[0]?.substring(0, 60));
                 const photoToSend = currentRemovalPreview || photoUrls[0];
                 console.log('[generateFinalDesign] Sending:', photoToSend?.startsWith('data:') ? 'REMOVAL PREVIEW (data URL)' : 'ORIGINAL PHOTO (URL)');
