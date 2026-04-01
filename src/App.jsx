@@ -960,8 +960,10 @@ function NewProjectPage() {
                   } catch (e) { console.log('Mask generation failed:', e.message); }
                 }
                 // Fire render in background — don't block wizard advancement
+                // Use removal preview if available (plants already removed), otherwise original photo
+                console.log('[auto-render] removalPreview exists:', !!removalPreview);
                 api.designRender.generate(
-                  photoUrls[0],
+                  removalPreview || photoUrls[0],
                   finalPlants,
                   detectedPlants.filter(p => plantMarks[p.id] !== 'remove'),
                   detectedPlants.filter(p => plantMarks[p.id] === 'remove'),
