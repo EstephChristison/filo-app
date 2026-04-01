@@ -749,6 +749,7 @@ function NewProjectPage() {
   const [drawPaths, setDrawPaths] = useState([]);
   const [currentPath, setCurrentPath] = useState([]);
   const [removalPreview, setRemovalPreview] = useState(null);
+  const removalPreviewRef = useRef(null); // Ref mirror — always current, never stale in closures
   const [designRenderUrl, setDesignRenderUrl] = useState(null);
   const [designMode, setDesignMode] = useState('auto');
   const [adjustPin, setAdjustPin] = useState(null); // { x: %, y: % }
@@ -961,9 +962,11 @@ function NewProjectPage() {
                 }
                 // Fire render in background — don't block wizard advancement
                 // Use removal preview if available (plants already removed), otherwise original photo
-                console.log('[auto-render] removalPreview exists:', !!removalPreview);
+                // CRITICAL: Read from ref, not state — state may be stale in this closure
+                const currentRemovalPreview = removalPreviewRef.current;
+                console.log('[auto-render] removalPreviewRef.current exists:', !!currentRemovalPreview, 'state removalPreview:', !!removalPreview);
                 api.designRender.generate(
-                  removalPreview || photoUrls[0],
+                  currentRemovalPreview || photoUrls[0],
                   finalPlants,
                   detectedPlants.filter(p => plantMarks[p.id] !== 'remove'),
                   detectedPlants.filter(p => plantMarks[p.id] === 'remove'),
@@ -1371,6 +1374,7 @@ function NewProjectPage() {
                 maskDataUrl
               );
               setRemovalPreview(result.previewUrl);
+              removalPreviewRef.current = result.previewUrl; // Keep ref in sync
             } catch (err) {
               console.error('Bed prep generation failed:', err.message);
               alert('Bed prep generation failed: ' + err.message);
@@ -1398,8 +1402,8 @@ function NewProjectPage() {
                       </button>
                       {drawPaths.length > 0 && (
                         <>
-                          <button className="btn btn-sm btn-ghost" onClick={() => { setDrawPaths(prev => prev.slice(0, -1)); setRemovalPreview(null); }}>Undo</button>
-                          <button className="btn btn-sm btn-ghost" style={{ color: '#DC2626' }} onClick={() => { setDrawPaths([]); setRemovalPreview(null); }}>Clear All</button>
+                          <button className="btn btn-sm btn-ghost" onClick={() => { setDrawPaths(prev => prev.slice(0, -1)); setRemovalPreview(null); removalPreviewRef.current = null; }}>Undo</button>
+                          <button className="btn btn-sm btn-ghost" style={{ color: '#DC2626' }} onClick={() => { setDrawPaths([]); setRemovalPreview(null); removalPreviewRef.current = null; }}>Clear All</button>
                           <span style={{ fontSize: 12, color: 'var(--filo-grey)' }}>{drawPaths.length} area{drawPaths.length !== 1 ? 's' : ''} marked</span>
                         </>
                       )}
@@ -1411,7 +1415,7 @@ function NewProjectPage() {
                         </button>
                       )}
                       {removalPreview && (
-                        <button className="btn btn-sm" onClick={() => setRemovalPreview(null)} style={{ fontWeight: 600 }}>
+                        <button className="btn btn-sm" onClick={() => { setRemovalPreview(null); removalPreviewRef.current = null; }} style={{ fontWeight: 600 }}>
                           ← Back to Draw
                         </button>
                       )}
