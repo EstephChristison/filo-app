@@ -43,7 +43,21 @@ function setStoredUser(user) {
 
 async function apiFetch(path, options = {}) {
   const url = `${API_BASE}${path}`;
-  const token = getToken();
+
+  // Pro-actively refresh token if it's about to expire (within 60s)
+  // This prevents FormData/stream body from being consumed on a 401 retry
+  let token = getToken();
+  if (token) {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      if (payload.exp && (payload.exp * 1000 - Date.now()) < 60000) {
+        const refreshed = await refreshAccessToken();
+        if (refreshed) {
+          token = getToken();
+        }
+      }
+    } catch { /* ignore decode errors */ }
+  }
 
   const headers = {
     'Content-Type': 'application/json',
@@ -55,23 +69,33 @@ async function apiFetch(path, options = {}) {
   }
 
   // If sending FormData (file upload), remove Content-Type so browser sets boundary
-  if (options.body instanceof FormData) {
+  const isFormData = options.body instanceof FormData;
+  if (isFormData) {
     delete headers['Content-Type'];
   }
 
   let response;
   try {
+    // 90 second timeout for AI-heavy endpoints (bed prep, design render)
+    const controller = new AbortController();
+    const timeoutMs = path.includes('removal-preview') || path.includes('design-render') || path.includes('generate-design') ? 90000 : 30000;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     response = await fetch(url, {
       ...options,
       headers,
-      body: options.body instanceof FormData ? options.body : (options.body ? JSON.stringify(options.body) : undefined),
+      signal: controller.signal,
+      body: isFormData ? options.body : (options.body ? JSON.stringify(options.body) : undefined),
     });
+    clearTimeout(timeoutId);
   } catch (networkErr) {
+    if (networkErr.name === 'AbortError') {
+      throw new Error('Request timed out. The server is still processing — try again in a moment.');
+    }
     throw new Error(`Network error: Could not reach server. Check your connection. (${networkErr.message})`);
   }
 
-  // Handle 401 — try to refresh token once
-  if (response.status === 401 && getRefreshToken()) {
+  // Handle 401 — try to refresh token once (only for non-FormData, since streams can't be re-sent)
+  if (response.status === 401 && getRefreshToken() && !isFormData) {
     const refreshed = await refreshAccessToken();
     if (refreshed) {
       // Retry the original request with new token
@@ -79,7 +103,7 @@ async function apiFetch(path, options = {}) {
       response = await fetch(url, {
         ...options,
         headers,
-        body: options.body instanceof FormData ? options.body : (options.body ? JSON.stringify(options.body) : undefined),
+        body: options.body ? JSON.stringify(options.body) : undefined,
       });
     } else {
       // Refresh failed — force logout
@@ -87,6 +111,11 @@ async function apiFetch(path, options = {}) {
       window.location.href = '/';
       throw new Error('Session expired. Please log in again.');
     }
+  } else if (response.status === 401) {
+    // FormData request with expired token — refresh failed or wasn't caught proactively
+    clearTokens();
+    window.location.href = '/';
+    throw new Error('Session expired. Please log in again.');
   }
 
   if (!response.ok) {
@@ -165,6 +194,16 @@ export const auth = {
       method: 'POST',
       body: { email, firstName, lastName, role },
     });
+  },
+
+  async acceptInvite(inviteToken, password) {
+    const data = await apiFetch('/auth/accept-invite', {
+      method: 'POST',
+      body: { inviteToken, password },
+    });
+    setTokens(data.token, data.refreshToken);
+    setStoredUser(data.user);
+    return data;
   },
 };
 
@@ -304,10 +343,47 @@ export const existingPlants = {
     return apiFetch(`/areas/${areaId}/existing-plants`);
   },
 
-  async mark(plantId, mark, comment) {
+  async mark(plantId, mark, comment, rename) {
     return apiFetch(`/existing-plants/${plantId}/mark`, {
       method: 'PUT',
-      body: { mark, comment },
+      body: { mark, comment, rename },
+    });
+  },
+
+  async add(areaId, { name, mark, position_x, position_y, comment }) {
+    return apiFetch(`/areas/${areaId}/existing-plants`, {
+      method: 'POST',
+      body: { name, mark, position_x, position_y, comment },
+    });
+  },
+
+  async remove(plantId) {
+    return apiFetch(`/existing-plants/${plantId}`, { method: 'DELETE' });
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// REMOVAL PREVIEW
+// ═══════════════════════════════════════════════════════════════════
+
+export const removalPreview = {
+  async generate(photoUrl, removalAreas, projectContext, maskDataUrl) {
+    return apiFetch('/removal-preview', {
+      method: 'POST',
+      body: { photoUrl, removalAreas, projectContext, maskDataUrl },
+    });
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// DESIGN RENDER (Final installed look)
+// ═══════════════════════════════════════════════════════════════════
+
+export const designRender = {
+  async generate(photoUrl, designPlants, keptPlants, removedPlants, designStyle, narrative, maskDataUrl) {
+    return apiFetch('/design-render', {
+      method: 'POST',
+      body: { photoUrl, designPlants, keptPlants, removedPlants, designStyle, narrative, maskDataUrl },
     });
   },
 };
@@ -502,10 +578,10 @@ export const billing = {
 // ═══════════════════════════════════════════════════════════════════
 
 export const ai = {
-  async detectPlants(photoUrl, areaId) {
+  async detectPlants(photoUrl, areaId, location, usdaZone) {
     return apiFetch('/ai/detect-plants', {
       method: 'POST',
-      body: { photoUrl, areaId },
+      body: { imageBase64: photoUrl, areaId, location, usdaZone },
     });
   },
 
@@ -539,6 +615,8 @@ const api = {
   projects,
   plants,
   existingPlants,
+  removalPreview,
+  designRender,
   designs,
   estimates,
   submittals,

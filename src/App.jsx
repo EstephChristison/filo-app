@@ -10,8 +10,10 @@ const AppContext = createContext(null);
 
 const useApp = () => useContext(AppContext);
 
-// ─── Mock Data ───────────────────────────────────────────────────
-const PLANTS_DB = [
+// ─── Mock Data (dev only) ────────────────────────────────────────
+// These arrays are ONLY populated in local development (import.meta.env.DEV).
+// In production builds (Vercel) they are empty — all data comes from the API.
+const PLANTS_DB = import.meta.env.DEV ? [
   { id: 1, name: "Loropetalum 'Purple Diamond'", type: "shrub", size: "3-gal", sun: "full", mature_h: "6ft", mature_w: "5ft", bloom: "Pink, Spring", water: "Moderate", price: 28.50, img: "🌸", desc: "Elegant weeping form with burgundy foliage and ribbon-like fuchsia blooms that cascade in spring." },
   { id: 2, name: "Indian Hawthorn 'Clara'", type: "shrub", size: "3-gal", sun: "full", mature_h: "4ft", mature_w: "4ft", bloom: "White/Pink, Spring", water: "Low", price: 22.00, img: "🌺", desc: "Compact evergreen with glossy leaves and delicate star-shaped flowers, thriving in Houston's warmth." },
   { id: 3, name: "Gulf Muhly Grass", type: "ornamental_grass", size: "1-gal", sun: "full", mature_h: "4ft", mature_w: "3ft", bloom: "Pink plumes, Fall", water: "Low", price: 12.50, img: "🌾", desc: "A Texas native with ethereal pink cloud-like plumes that catch autumn light like spun cotton candy." },
@@ -22,18 +24,18 @@ const PLANTS_DB = [
   { id: 8, name: "Ligustrum 'Sunshine'", type: "shrub", size: "5-gal", sun: "full", mature_h: "6ft", mature_w: "4ft", bloom: "Yellow foliage, Evergreen", water: "Moderate", price: 38.00, img: "✨", desc: "Electric chartreuse foliage that illuminates shaded borders and adds year-round golden glow." },
   { id: 9, name: "Star Jasmine", type: "vine", size: "3-gal", sun: "full/partial", mature_h: "20ft", mature_w: "climbing", bloom: "White, Spring", water: "Moderate", price: 24.00, img: "⭐", desc: "Intensely fragrant white pinwheel flowers drift their perfume across warm evening gardens." },
   { id: 10, name: "Crape Myrtle 'Natchez'", type: "tree", size: "15-gal", sun: "full", mature_h: "25ft", mature_w: "20ft", bloom: "White, Summer", water: "Low", price: 145.00, img: "🌳", desc: "Sculptural cinnamon bark and cascading white summer panicles define this iconic Southern specimen." },
-];
+] : [];
 
-const MOCK_PROJECTS = [
+const MOCK_PROJECTS = import.meta.env.DEV ? [
   { id: "PRJ-001", client: "Johnson Residence", address: "4521 River Oaks Blvd", status: "design_review", areas: ["Front Yard", "Side Yard"], date: "2026-03-25", total: 12450 },
   { id: "PRJ-002", client: "Chen Family Estate", address: "1892 Memorial Dr", status: "estimate_approved", areas: ["Front Yard", "Back Yard"], date: "2026-03-22", total: 28900 },
   { id: "PRJ-003", client: "Martinez Property", address: "7744 Tanglewood Ln", status: "submittal_sent", areas: ["Front Yard"], date: "2026-03-18", total: 8750 },
   { id: "PRJ-004", client: "Williams Home", address: "3310 Piping Rock Ln", status: "completed", areas: ["Front Yard", "Back Yard", "Side Yard"], date: "2026-03-10", total: 34200 },
-];
+] : [];
 
 const STATUS_MAP = {
   photo_upload: { label: "Photos", color: "#6B7280", step: 1 },
-  plant_detection: { label: "Detection", color: "#F59E0B", step: 2 },
+  plant_detection: { label: "Bed Prep", color: "#F59E0B", step: 2 },
   design_questionnaire: { label: "Questionnaire", color: "#8B5CF6", step: 3 },
   design_generation: { label: "Designing", color: "#3B82F6", step: 4 },
   design_review: { label: "Review", color: "#EC4899", step: 5 },
@@ -44,6 +46,28 @@ const STATUS_MAP = {
 };
 
 const CRM_OPTIONS = ["Jobber", "ServiceTitan", "LMN", "Aspire", "SingleOps", "Housecall Pro", "Arborgold", "Service Autopilot", "Yardbook"];
+
+// ─── Error Boundary ─────────────────────────────────────────────
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { hasError: false, error: null, info: null }; }
+  static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  componentDidCatch(error, info) { this.setState({ info }); console.error('[FILO ErrorBoundary]', error, info?.componentStack); }
+  render() {
+    if (this.state.hasError) {
+      return React.createElement('div', { style: { padding: 40, maxWidth: 600, margin: '40px auto', background: '#FEE2E2', borderRadius: 12, fontFamily: 'system-ui' } },
+        React.createElement('h2', { style: { color: '#991B1B', marginBottom: 12 } }, '⚠️ Something went wrong'),
+        React.createElement('pre', { style: { fontSize: 12, color: '#991B1B', whiteSpace: 'pre-wrap', wordBreak: 'break-all', marginBottom: 16 } },
+          String(this.state.error) + '\n\n' + (this.state.info?.componentStack || '')
+        ),
+        React.createElement('button', {
+          onClick: () => { localStorage.removeItem('filo_wizard_checkpoint'); window.location.reload(); },
+          style: { padding: '10px 20px', background: '#991B1B', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600 }
+        }, 'Clear State & Reload')
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ─── Utility Functions ───────────────────────────────────────────
 const fmt = (n) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
@@ -458,7 +482,8 @@ tr:hover td { background: rgba(45,106,79,0.02); }
 // ═══════════════════════════════════════════════════════════════════
 
 // ─── Sidebar ─────────────────────────────────────────────────────
-function Sidebar({ page, setPage, mobileOpen, setMobileOpen }) {
+function Sidebar({ page, setPage, mobileOpen, setMobileOpen, user }) {
+  const { handleLogout } = useApp();
   const navItems = [
     { section: "Core", items: [
       { id: "dashboard", icon: "📊", label: "Dashboard" },
@@ -503,12 +528,15 @@ function Sidebar({ page, setPage, mobileOpen, setMobileOpen }) {
           </div>
         ))}
       </nav>
-      <div className="sidebar-footer">
-        <div className="avatar">EC</div>
-        <div className="info">
-          <div className="name">Esteph Christison</div>
-          <div className="role">Admin • King's Garden</div>
+      <div className="sidebar-footer" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div className="avatar">{(user?.name || 'U').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}</div>
+          <div className="info">
+            <div className="name">{user?.name || 'User'}</div>
+            <div className="role">{user?.role || 'Member'} • {user?.companyName || 'FILO'}</div>
+          </div>
         </div>
+        <button onClick={handleLogout} style={{ background: 'rgba(255,255,255,0.06)', border: 'none', color: 'var(--filo-grey)', padding: '6px 12px', borderRadius: 'var(--radius-sm)', fontSize: 12, cursor: 'pointer', textAlign: 'center' }}>Sign Out</button>
       </div>
     </div>
   );
@@ -683,7 +711,11 @@ function ProjectsPage({ setPage }) {
 // ─── New Project Wizard ──────────────────────────────────────────
 function NewProjectPage() {
   const { setPage } = useApp();
-  const [step, setStep] = useState(1);
+
+  // ─── Checkpoint: restore saved wizard state on mount ────────────
+  const [saved] = useState(() => { try { return JSON.parse(localStorage.getItem('filo_wizard_checkpoint') || 'null'); } catch { return null; } });
+
+  const [step, setStep] = useState(saved?.step || 1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [apiReady, setApiReady] = useState(false);
@@ -691,39 +723,69 @@ function NewProjectPage() {
   const fileInputRefs = useRef({});
 
   // Form data
-  const [project, setProject] = useState({
+  const [project, setProject] = useState(saved?.project || {
     clientName: "", address: "", phone: "", email: "",
     areas: [],
     sun: "", style: "", specialRequests: "", lighting: false, hardscape: false,
   });
 
-  // File selections (not yet uploaded)
+  // File selections (not yet uploaded — cannot persist File objects across refresh)
   const [selectedFiles, setSelectedFiles] = useState({}); // { areaName: File[] }
 
   // API response data persisted across steps
-  const [clientId, setClientId] = useState(null);
-  const [projectId, setProjectId] = useState(null);
-  const [areaMap, setAreaMap] = useState({}); // { areaName: { id, ...areaData } }
-  const [uploadedPhotos, setUploadedPhotos] = useState({}); // { areaName: photoData[] }
-  const [detectedPlants, setDetectedPlants] = useState([]); // from AI detection
-  const [plantMarks, setPlantMarks] = useState({}); // { plantId: 'keep' | 'remove' }
-  const [removalCost, setRemovalCost] = useState("350.00");
-  const [design, setDesign] = useState(null);
-  const [designPlants, setDesignPlants] = useState([]);
-  const [chatMessages, setChatMessages] = useState([]);
+  const [clientId, setClientId] = useState(saved?.clientId || null);
+  const [projectId, setProjectId] = useState(saved?.projectId || null);
+  const [areaMap, setAreaMap] = useState(saved?.areaMap || {}); // { areaName: { id, ...areaData } }
+  const [uploadedPhotos, setUploadedPhotos] = useState(saved?.uploadedPhotos || {}); // { areaName: photoData[] }
+  const [detectedPlants, setDetectedPlants] = useState(saved?.detectedPlants || []); // from AI detection
+  const [plantMarks, setPlantMarks] = useState(saved?.plantMarks || {}); // { plantId: 'keep' | 'remove' }
+  const [highlightedPlant, setHighlightedPlant] = useState(null);
+  const [editingPlantId, setEditingPlantId] = useState(null);
+  const [manualPlantName, setManualPlantName] = useState('');
+  const [placingPlant, setPlacingPlant] = useState(false);
+  // Draw-to-remove tool state
+  const [drawMode, setDrawMode] = useState(false); // 'remove' or false
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [drawPaths, setDrawPaths] = useState([]);
+  const [currentPath, setCurrentPath] = useState([]);
+  const [removalPreview, setRemovalPreview] = useState(null);
+  const [designRenderUrl, setDesignRenderUrl] = useState(null);
+  const [designMode, setDesignMode] = useState('auto');
+  const [generatingPreview, setGeneratingPreview] = useState(false);
+  const [generatingRender, setGeneratingRender] = useState(false);
+  const removalCanvasRef = useRef(null);
+  const canvasRef = useRef(null);
+  const photoContainerRef = useRef(null);
+  // Drag-and-drop plant markers
+  const [draggingPlantId, setDraggingPlantId] = useState(null);
+  const [removalCost, setRemovalCost] = useState(saved?.removalCost || "350.00");
+  const [design, setDesign] = useState(saved?.design || null);
+  const [designPlants, setDesignPlants] = useState(saved?.designPlants || []);
+  const [chatMessages, setChatMessages] = useState(saved?.chatMessages || []);
   const [chatInput, setChatInput] = useState("");
-  const [estimate, setEstimate] = useState(null);
-  const [estimateApproved, setEstimateApproved] = useState(false);
-  const [submittal, setSubmittal] = useState(null);
-  const [exportData, setExportData] = useState(null);
+  const [estimate, setEstimate] = useState(saved?.estimate || null);
+  const [estimateApproved, setEstimateApproved] = useState(saved?.estimateApproved || false);
+  const [submittal, setSubmittal] = useState(saved?.submittal || null);
+  const [exportData, setExportData] = useState(saved?.exportData || null);
 
   // Load API module
   useEffect(() => {
     import("./api.js").then(mod => { apiRef.current = mod.default; setApiReady(true); }).catch(console.error);
   }, []);
 
-  const totalSteps = 10;
-  const stepTitles = ["Client Info", "Property Areas", "Photo Upload", "Plant Detection", "Design Options", "AI Design", "Review & Adjust", "Estimate", "Submittal", "CRM Push"];
+  // ─── Checkpoint: auto-save wizard state on every step change ───
+  useEffect(() => {
+    const checkpoint = {
+      step, project, clientId, projectId, areaMap, uploadedPhotos,
+      detectedPlants, plantMarks, removalCost, design, designPlants,
+      chatMessages, estimate, estimateApproved, submittal, exportData,
+      savedAt: Date.now(),
+    };
+    try { localStorage.setItem('filo_wizard_checkpoint', JSON.stringify(checkpoint)); } catch (e) { /* quota */ }
+  }, [step, project, clientId, projectId, areaMap, uploadedPhotos, detectedPlants, plantMarks, removalCost, design, designPlants, chatMessages, estimate, estimateApproved, submittal, exportData]);
+
+  const totalSteps = 9;
+  const stepTitles = ["Client Info", "Property Areas", "Photo Upload", "Bed Preparation", "AI Design", "Review & Adjust", "Estimate", "Submittal", "CRM Push"];
 
   const updateProject = (updates) => setProject(p => ({ ...p, ...updates }));
 
@@ -772,37 +834,49 @@ function NewProjectPage() {
         }
         case 3: {
           // Upload photos for each area
-          const areas = Object.keys(selectedFiles);
-          if (areas.length === 0) {
-            // Allow skipping if no photos (will use placeholder)
+          const fileAreas = Object.keys(selectedFiles).filter(a => selectedFiles[a]?.length > 0);
+          if (fileAreas.length === 0) {
+            // Skip — no photos selected
             setStep(4);
             break;
           }
           const allPhotos = {};
-          for (const areaName of areas) {
+          let totalUploaded = 0;
+          for (const areaName of fileAreas) {
             const files = selectedFiles[areaName];
-            if (!files || files.length === 0) continue;
             const areaData = areaMap[areaName];
-            if (!areaData) continue;
-            const photos = await api.files.uploadPhotos(areaData.id, files);
-            allPhotos[areaName] = photos;
+            if (!areaData) {
+              console.warn(`No area data for "${areaName}", skipping upload`);
+              continue;
+            }
+            try {
+              const photos = await api.files.uploadPhotos(areaData.id, files);
+              allPhotos[areaName] = Array.isArray(photos) ? photos : (photos?.photos || [photos]);
+              totalUploaded += files.length;
+            } catch (uploadErr) {
+              console.error(`Upload failed for ${areaName}:`, uploadErr.message);
+              throw new Error(`Photo upload failed for ${areaName}: ${uploadErr.message}`);
+            }
           }
           setUploadedPhotos(allPhotos);
-          // Fetch detected plants (AI detection is triggered server-side on upload)
-          // Give it a moment, then fetch
+          // Fetch detected plants from ALL areas
           try {
-            const firstArea = Object.values(areaMap)[0];
-            if (firstArea) {
-              const existing = await api.existingPlants.list(firstArea.id);
-              setDetectedPlants(existing || []);
-              // Initialize marks
-              const marks = {};
-              (existing || []).forEach(p => { marks[p.id] = p.mark || 'keep'; });
-              setPlantMarks(marks);
+            let allPlants = [];
+            for (const area of Object.values(areaMap)) {
+              if (area?.id) {
+                const existing = await api.existingPlants.list(area.id);
+                const plantList = Array.isArray(existing) ? existing : (existing?.plants || []);
+                allPlants = allPlants.concat(plantList);
+              }
             }
+            setDetectedPlants(allPlants);
+            const marks = {};
+            allPlants.forEach(p => { marks[p.id] = p.mark || 'keep'; });
+            setPlantMarks(marks);
           } catch (e) {
             console.log("Plant detection not yet complete:", e.message);
           }
+          setError(null);
           setStep(4);
           break;
         }
@@ -817,38 +891,40 @@ function NewProjectPage() {
           break;
         }
         case 5: {
-          // Save design preferences to project
+          // AI Design step — save preferences, generate design if not done, then move to Review
           if (projectId) {
             await api.projects.update(projectId, {
               sun_exposure: project.sun,
               design_style: project.style,
               special_requests: project.specialRequests,
-              include_lighting: project.lighting,
-              include_hardscape: project.hardscape,
+              lighting_requested: project.lighting,
+              hardscape_changes: project.hardscape,
             });
-            // Trigger AI design generation
-            await api.projects.updateStatus(projectId, 'design_generation');
-            try {
-              const designResult = await api.projects.generateDesign(projectId);
-              setDesign(designResult.design || designResult);
-              setDesignPlants(designResult.plants || designResult.design?.plants || []);
-              if (designResult.design?.id) {
-                setChatMessages([{ role: 'ai', text: 'Your design is ready! I\'ve selected plants based on your preferences and the property conditions. You can ask me to make changes — try "swap all shrubs for native species" or "add more color near the walkway".' }]);
+            // Generate design if not already done
+            if (!design || designPlants.length === 0) {
+              await api.projects.updateStatus(projectId, 'design_generation');
+              try {
+                const designResult = await api.projects.generateDesign(projectId);
+                const d = designResult.design || designResult;
+                setDesign(d);
+                const plants = designResult.plants || d?.plants || [];
+                let finalPlants = plants;
+                if (finalPlants.length === 0 && d?.design_data) {
+                  try {
+                    const dd = typeof d.design_data === 'string' ? JSON.parse(d.design_data) : d.design_data;
+                    finalPlants = dd.plants || [];
+                  } catch (e) {}
+                }
+                setDesignPlants(finalPlants);
+              } catch (e) {
+                console.log("Design generation error:", e.message);
               }
-            } catch (e) {
-              console.log("Design generation error:", e.message);
-              setChatMessages([{ role: 'ai', text: 'Design generation encountered an issue. You can still proceed and make adjustments manually.' }]);
             }
           }
           setStep(6);
           break;
         }
         case 6: {
-          // Move to review (design should be ready)
-          setStep(7);
-          break;
-        }
-        case 7: {
           // Generate estimate
           if (projectId) {
             try {
@@ -858,10 +934,10 @@ function NewProjectPage() {
               console.log("Estimate generation error:", e.message);
             }
           }
-          setStep(8);
+          setStep(7);
           break;
         }
-        case 8: {
+        case 7: {
           // Approve estimate and generate submittal
           if (projectId) {
             if (estimate?.id && !estimateApproved) {
@@ -877,11 +953,11 @@ function NewProjectPage() {
               console.log("Submittal generation error:", e.message);
             }
           }
-          setStep(9);
+          setStep(8);
           break;
         }
-        case 9: {
-          // Final step — export / CRM push
+        case 8: {
+          // CRM Push step — export data
           if (projectId) {
             await api.projects.updateStatus(projectId, 'completed');
             try {
@@ -889,7 +965,18 @@ function NewProjectPage() {
               setExportData(exp);
             } catch (e) { console.log("Export error:", e.message); }
           }
-          setStep(10);
+          setStep(9);
+          break;
+        }
+        case 9: {
+          // Final completion — mark project as completed
+          if (projectId) {
+            try {
+              await api.projects.updateStatus(projectId, 'completed');
+            } catch (e) { console.log("Completion error:", e.message); }
+          }
+          localStorage.removeItem('filo_wizard_checkpoint');
+          setPage('projects');
           break;
         }
         default:
@@ -925,10 +1012,37 @@ function NewProjectPage() {
 
   // File selection handler
   const handleFileSelect = (areaName, files) => {
+    const fileArray = Array.from(files);
+    console.log('[FILO] handleFileSelect called:', areaName, fileArray.length, 'files');
+    if (fileArray.length === 0) return;
     setSelectedFiles(prev => ({
       ...prev,
-      [areaName]: [...(prev[areaName] || []), ...Array.from(files)],
+      [areaName]: [...(prev[areaName] || []), ...fileArray],
     }));
+  };
+
+  // Open native file picker via showOpenFilePicker (fallback for broken input)
+  const openFilePicker = async (areaName) => {
+    try {
+      if (window.showOpenFilePicker) {
+        const handles = await window.showOpenFilePicker({
+          multiple: true,
+          types: [{ description: 'Images', accept: { 'image/*': ['.jpg', '.jpeg', '.png', '.heic', '.webp'] } }],
+        });
+        const files = await Promise.all(handles.map(h => h.getFile()));
+        handleFileSelect(areaName, files);
+      } else {
+        // Fallback: create a temporary input
+        const inp = document.createElement('input');
+        inp.type = 'file';
+        inp.multiple = true;
+        inp.accept = 'image/jpeg,image/png,image/heic,image/webp';
+        inp.onchange = () => { if (inp.files?.length) handleFileSelect(areaName, inp.files); };
+        inp.click();
+      }
+    } catch (e) {
+      if (e.name !== 'AbortError') console.error('File picker error:', e);
+    }
   };
 
   const removeFile = (areaName, index) => {
@@ -944,7 +1058,7 @@ function NewProjectPage() {
     switch (step) {
       case 1: return "Create Client & Continue →";
       case 2: return "Create Project →";
-      case 3: return selectedFiles && Object.values(selectedFiles).some(f => f.length > 0) ? "Upload & Detect Plants →" : "Skip Photos →";
+      case 3: { const totalPhotos = Object.values(selectedFiles).reduce((sum, f) => sum + (f?.length || 0), 0); return totalPhotos > 0 ? `Upload ${totalPhotos} Photo${totalPhotos > 1 ? 's' : ''} →` : "Skip Photos →"; }
       case 4: return "Save & Continue →";
       case 5: return "Generate AI Design →";
       case 6: return "Review Design →";
@@ -962,9 +1076,10 @@ function NewProjectPage() {
           <h2>New Project</h2>
           <p>Step {step} of {totalSteps} — {stepTitles[step - 1]}</p>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          {step > 1 && step < 10 && <button className="btn btn-secondary" onClick={handleBack} disabled={loading}>← Back</button>}
-          {step < totalSteps && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {step > 1 && <button className="btn" style={{ fontSize: 12, padding: "4px 10px", opacity: 0.5 }} onClick={() => { localStorage.removeItem('filo_wizard_checkpoint'); window.location.reload(); }}>Start Fresh</button>}
+          {step > 1 && step <= totalSteps && <button className="btn btn-secondary" onClick={handleBack} disabled={loading}>← Back</button>}
+          {step <= totalSteps && (
             <button className="btn btn-primary" onClick={handleNext} disabled={loading || !apiReady}>
               {getNextLabel()}
             </button>
@@ -1075,35 +1190,48 @@ function NewProjectPage() {
               {(project.areas.length > 0 ? project.areas : ["Front Yard"]).map(area => (
                 <div key={area} style={{ marginBottom: 24 }}>
                   <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>📸 {area}</h4>
-                  <div className="upload-zone" onClick={() => fileInputRefs.current[area]?.click()}
+                  <div style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
+                    padding: 32, border: '2px dashed var(--filo-light)', borderRadius: 'var(--radius-sm)',
+                    background: 'var(--filo-green-pale)',
+                  }}
                     onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--filo-green)'; }}
                     onDragLeave={e => { e.currentTarget.style.borderColor = ''; }}
                     onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor = ''; handleFileSelect(area, e.dataTransfer.files); }}
-                    style={{ cursor: 'pointer' }}>
-                    <input type="file" ref={el => fileInputRefs.current[area] = el} multiple accept="image/jpeg,image/png,image/heic,image/webp"
-                      style={{ display: 'none' }} onChange={e => { handleFileSelect(area, e.target.files); e.target.value = ''; }} />
-                    <div className="icon">📷</div>
-                    <p><strong>Tap to upload</strong> or drag and drop photos</p>
-                    <p style={{ fontSize: 12, marginTop: 4 }}>JPG, PNG, HEIC up to 25MB each</p>
+                  >
+                    <button type="button" className="btn btn-primary" onClick={() => openFilePicker(area)}
+                      style={{ fontSize: 16, padding: '12px 32px' }}>
+                      📷 Select Photos
+                    </button>
+                    <span style={{ fontSize: 13, color: 'var(--filo-grey)' }}>JPG, PNG, HEIC up to 25MB each — or drag and drop</span>
                   </div>
-                  <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                    {(selectedFiles[area] || []).map((file, idx) => (
-                      <div key={idx} style={{
-                        width: 100, height: 100, borderRadius: "var(--radius-sm)",
-                        background: "var(--filo-slate)", overflow: "hidden",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 10, color: "white", fontWeight: 500, position: "relative"
-                      }}>
-                        <img src={URL.createObjectURL(file)} alt={file.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                          onLoad={e => URL.revokeObjectURL(e.target.src)} />
-                        <button onClick={(e) => { e.stopPropagation(); removeFile(area, idx); }}
-                          style={{ position: "absolute", top: 4, right: 4, background: "rgba(0,0,0,0.6)", border: "none", color: "white", borderRadius: "50%", width: 20, height: 20, fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
-                        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.6)", padding: "2px 4px", fontSize: 9, textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
-                          {file.name}
-                        </div>
+                  {(selectedFiles[area]?.length > 0) && (
+                    <div style={{ marginTop: 12 }}>
+                      <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--filo-green)' }}>
+                        ✅ {selectedFiles[area].length} photo(s) ready to upload
+                      </p>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {selectedFiles[area].map((file, idx) => (
+                          <div key={idx} style={{
+                            width: 100, height: 100, borderRadius: "var(--radius-sm)",
+                            background: "var(--filo-slate)", overflow: "hidden",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: 10, color: "white", fontWeight: 500, position: "relative"
+                          }}>
+                            <img src={URL.createObjectURL(file)} alt={file.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              onLoad={e => URL.revokeObjectURL(e.target.src)} />
+                            <button onClick={() => removeFile(area, idx)}
+                              style={{ position: "absolute", top: 4, right: 4, background: "rgba(0,0,0,0.6)", border: "none", color: "white", borderRadius: "50%", width: 20, height: 20, fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+                            <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.6)", padding: "2px 4px", fontSize: 9, textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+                              {file.name}
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                      <button type="button" className="btn btn-secondary" onClick={() => openFilePicker(area)}
+                        style={{ marginTop: 8, fontSize: 12 }}>+ Add More Photos</button>
+                    </div>
+                  )}
                 </div>
               ))}
               <div style={{ padding: 16, background: "#FEF3C7", borderRadius: "var(--radius-sm)", fontSize: 13, color: "#92400E" }}>
@@ -1113,161 +1241,549 @@ function NewProjectPage() {
           </div>
         )}
 
-        {/* Step 4: Existing Plant Detection — REAL data */}
-        {step === 4 && (
-          <div className="card scale-in">
-            <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Existing Plant Detection</h3></div>
-            <div className="card-body">
-              {detectedPlants.length > 0 ? (
-                <>
-                  <p style={{ fontSize: 14, color: "var(--filo-grey)", marginBottom: 20 }}>AI has detected existing plants. Mark plants to <span style={{ color: "var(--filo-green)", fontWeight: 600 }}>KEEP</span> or <span style={{ color: "var(--filo-red)", fontWeight: 600 }}>REMOVE</span>.</p>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
-                    {detectedPlants.map(plant => {
-                      const mark = plantMarks[plant.id] || 'keep';
-                      return (
-                        <div key={plant.id} style={{
-                          padding: 12, borderRadius: "var(--radius-sm)", display: "flex", alignItems: "center", justifyContent: "space-between",
-                          border: `2px solid ${mark === 'keep' ? 'var(--filo-green)' : 'var(--filo-red)'}`,
-                          background: mark === 'keep' ? 'var(--filo-green-pale)' : '#FEE2E2',
-                        }}>
-                          <div>
-                            <span style={{ fontWeight: 600 }}>{plant.common_name || plant.botanical_name || 'Unknown Plant'}</span>
-                            {plant.confidence && <span style={{ fontSize: 11, color: "var(--filo-grey)", marginLeft: 8 }}>({Math.round(plant.confidence * 100)}% confidence)</span>}
-                          </div>
-                          <div style={{ display: "flex", gap: 8 }}>
-                            <button className={`btn btn-sm ${mark === 'keep' ? 'btn-primary' : 'btn-ghost'}`}
-                              onClick={() => setPlantMarks(prev => ({ ...prev, [plant.id]: 'keep' }))}>Keep</button>
-                            <button className={`btn btn-sm ${mark === 'remove' ? 'btn-primary' : 'btn-ghost'}`}
-                              style={mark === 'remove' ? { background: 'var(--filo-red)' } : {}}
-                              onClick={() => setPlantMarks(prev => ({ ...prev, [plant.id]: 'remove' }))}>Remove</button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div style={{ display: "flex", gap: 16, fontSize: 13 }}>
-                    <div style={{ flex: 1, padding: 12, background: "var(--filo-green-pale)", borderRadius: "var(--radius-sm)" }}>
-                      {Object.values(plantMarks).filter(m => m === 'keep').length} plants to keep
-                    </div>
-                    <div style={{ flex: 1, padding: 12, background: "#FEE2E2", borderRadius: "var(--radius-sm)" }}>
-                      {Object.values(plantMarks).filter(m => m === 'remove').length} plants to remove
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div style={{ textAlign: "center", padding: 40 }}>
-                  <div style={{ fontSize: 48, marginBottom: 16 }}>🌿</div>
-                  <p style={{ color: "var(--filo-grey)", marginBottom: 8 }}>No plants detected yet.</p>
-                  <p style={{ fontSize: 13, color: "var(--filo-silver)" }}>
-                    {Object.keys(uploadedPhotos).length > 0
-                      ? "AI plant detection is processing. You can proceed and come back later."
-                      : "Upload photos in the previous step to enable AI plant detection."}
-                  </p>
-                </div>
-              )}
-              <div style={{ marginTop: 16 }}>
-                <label className="form-label">Removal cost (lump sum line item)</label>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <span style={{ fontSize: 14, fontWeight: 500 }}>$</span>
-                  <input className="form-input" style={{ width: 120 }} value={removalCost}
-                    onChange={e => setRemovalCost(e.target.value)} />
-                  <span style={{ fontSize: 13, color: "var(--filo-grey)" }}>Haul away included</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Step 4: Bed Preparation — Draw removals + Generate preview */}
+        {step === 4 && (() => {
+          const api = apiRef.current;
+          const photoUrls = Object.values(uploadedPhotos || {}).flat().map(p => p?.file?.cdn_url || p?.cdn_url).filter(Boolean);
+          const getDrawPoint = (e) => {
+            const svg = e.currentTarget || e.target?.closest?.('svg');
+            if (!svg) return null;
+            const rect = svg.getBoundingClientRect();
+            const clientX = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
+            const clientY = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
+            return { x: (clientX - rect.left) / rect.width * 1000, y: (clientY - rect.top) / rect.height * 1000 };
+          };
+          const startDraw = (e) => {
+            if (!drawMode) return;
+            if (e.type === 'touchstart') e.preventDefault();
+            const pt = getDrawPoint(e);
+            if (!pt) return;
+            setIsDrawing(true);
+            setCurrentPath([pt]);
+          };
+          const moveDraw = (e) => {
+            if (!isDrawing || !drawMode) return;
+            if (e.type === 'touchmove') e.preventDefault();
+            const pt = getDrawPoint(e);
+            if (!pt) return;
+            setCurrentPath(prev => [...prev, pt]);
+          };
+          const endDraw = () => {
+            if (currentPath.length > 3) setDrawPaths(prev => [...prev, { points: currentPath, type: 'remove' }]);
+            setIsDrawing(false);
+            setCurrentPath([]);
+          };
 
-        {/* Step 5: Design Questionnaire */}
-        {step === 5 && (
-          <div className="card scale-in" style={{ maxWidth: 600 }}>
-            <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Design Preferences</h3></div>
-            <div className="card-body">
-              <div className="form-group">
-                <label className="form-label">Sun Exposure</label>
-                <div className="pill-group">
-                  {["Full Sun", "Partial Shade", "Full Shade"].map(opt => (
-                    <span key={opt} className={cn("pill", project.sun === opt && "active")}
-                      onClick={() => updateProject({ sun: opt })}>{opt}</span>
-                  ))}
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Design Style</label>
-                <div className="pill-group">
-                  {["Formal / Symmetrical", "Naturalistic / Cottage", "Modern / Minimalist", "Tropical", "Desert / Xeriscape"].map(opt => (
-                    <span key={opt} className={cn("pill", project.style === opt && "active")}
-                      onClick={() => updateProject({ style: opt })}>{opt}</span>
-                  ))}
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Specific Plant Requests</label>
-                <textarea className="form-input" placeholder="e.g. I want red knockout roses along the walkway..."
-                  value={project.specialRequests} onChange={e => updateProject({ specialRequests: e.target.value })} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Additional Features</label>
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  <div className="toggle-wrap">
-                    <div className={cn("toggle", project.lighting && "on")} onClick={() => updateProject({ lighting: !project.lighting })}></div>
-                    <span style={{ fontSize: 14 }}>Landscape Lighting</span>
-                  </div>
-                  <div className="toggle-wrap">
-                    <div className={cn("toggle", project.hardscape && "on")} onClick={() => updateProject({ hardscape: !project.hardscape })}></div>
-                    <span style={{ fontSize: 14 }}>Hardscape Changes</span>
-                  </div>
-                </div>
-              </div>
-              <div style={{ padding: 16, background: "var(--filo-green-pale)", borderRadius: "var(--radius-sm)", fontSize: 13, color: "var(--filo-green)" }}>
-                Clicking next saves these preferences and triggers the AI design engine.
-              </div>
-            </div>
-          </div>
-        )}
+          // Mask generation for bed prep preview
+          const getMaskDataUrl = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024; canvas.height = 1024;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, 1024, 1024);
+            ctx.fillStyle = '#000000';
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 50;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            for (const rawPath of drawPaths) {
+              const path = Array.isArray(rawPath) ? rawPath : (rawPath?.points || []);
+              if (path.length < 2) continue;
+              ctx.beginPath();
+              ctx.moveTo(path[0].x * 1.024, path[0].y * 1.024);
+              for (let i = 1; i < path.length; i++) {
+                ctx.lineTo(path[i].x * 1.024, path[i].y * 1.024);
+              }
+              ctx.closePath();
+              ctx.fill();
+              ctx.stroke();
+            }
+            return canvas.toDataURL('image/png');
+          };
 
-        {/* Step 6: AI Design Generation — REAL */}
-        {step === 6 && (
+          const generateBedPrep = async () => {
+            if (!api || generatingPreview || drawPaths.length === 0) return;
+            setGeneratingPreview(true);
+            try {
+              const maskDataUrl = getMaskDataUrl();
+              const result = await api.removalPreview.generate(
+                photoUrls[0], [],
+                'Remove plants from drawn areas. Show clean bed with fresh mulch. Keep everything else unchanged.',
+                maskDataUrl
+              );
+              setRemovalPreview(result.previewUrl);
+            } catch (err) {
+              console.error('Bed prep generation failed:', err.message);
+              alert('Bed prep generation failed: ' + err.message);
+            } finally { setGeneratingPreview(false); }
+          };
+
+          return (
           <div className="scale-in">
             <div className="card" style={{ marginBottom: 24 }}>
-              <div className="card-body" style={{ textAlign: "center", padding: 60 }}>
-                <div style={{ fontSize: 64, marginBottom: 16 }}>🌿</div>
-                <h3 style={{ fontFamily: "var(--font-display)", fontSize: 24, marginBottom: 8 }}>
-                  {design ? "AI Design Complete" : "AI Design in Progress"}
-                </h3>
-                <p style={{ color: "var(--filo-grey)", marginBottom: 24, maxWidth: 500, margin: "0 auto 24px" }}>
-                  {design
-                    ? "Your landscape design has been generated. Click 'Review Design' to make adjustments."
-                    : "FILO is analyzing the uploaded photos, selecting plants based on sun exposure, architecture, and your style preferences..."
-                  }
+              <div className="card-header">
+                <h3 style={{ fontFamily: "var(--font-display)" }}>Bed Preparation</h3>
+                <p style={{ fontSize: 13, color: "var(--filo-grey)", margin: "4px 0 0" }}>
+                  Draw around the plants you want removed, then generate a preview of the prepared bed.
                 </p>
-                {!design && (
-                  <div className="progress-bar" style={{ maxWidth: 400, margin: "0 auto", marginBottom: 12 }}>
-                    <div className="progress-fill" style={{ width: "100%", animation: "none" }}></div>
+              </div>
+              <div className="card-body">
+                {photoUrls.length > 0 ? (
+                  <>
+                    {/* Toolbar */}
+                    <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+                      <button className={`btn btn-sm ${drawMode === 'remove' ? '' : 'btn-ghost'}`}
+                        style={drawMode === 'remove' ? { background: '#DC2626', color: '#fff', border: 'none', fontWeight: 600 } : { fontWeight: 600 }}
+                        onClick={() => setDrawMode(drawMode === 'remove' ? false : 'remove')}>
+                        {drawMode === 'remove' ? '🖌 Drawing — Circle plants to remove' : '🖌 Start Drawing'}
+                      </button>
+                      {drawPaths.length > 0 && (
+                        <>
+                          <button className="btn btn-sm btn-ghost" onClick={() => { setDrawPaths(prev => prev.slice(0, -1)); setRemovalPreview(null); }}>Undo</button>
+                          <button className="btn btn-sm btn-ghost" style={{ color: '#DC2626' }} onClick={() => { setDrawPaths([]); setRemovalPreview(null); }}>Clear All</button>
+                          <span style={{ fontSize: 12, color: 'var(--filo-grey)' }}>{drawPaths.length} area{drawPaths.length !== 1 ? 's' : ''} marked</span>
+                        </>
+                      )}
+                      <div style={{ flex: 1 }} />
+                      {drawPaths.length > 0 && !removalPreview && (
+                        <button className="btn btn-sm" onClick={generateBedPrep} disabled={generatingPreview}
+                          style={{ background: '#DC2626', color: '#fff', border: 'none', fontWeight: 600, padding: '8px 20px' }}>
+                          {generatingPreview ? '⟳ Generating Preview...' : '✨ Generate Removal Preview'}
+                        </button>
+                      )}
+                      {removalPreview && (
+                        <button className="btn btn-sm" onClick={() => setRemovalPreview(null)} style={{ fontWeight: 600 }}>
+                          ← Back to Draw
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Preview result OR drawing canvas */}
+                    {removalPreview ? (
+                      <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 12 }}>
+                        <img src={removalPreview} alt="Bed Preparation Preview" style={{ width: "100%", display: "block" }} />
+                        <div style={{ position: "absolute", top: 12, left: 12, background: "#DC2626", color: "#fff", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
+                          BED PREP COMPLETE
+                        </div>
+                        <div style={{ position: "absolute", top: 12, right: 12, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "4px 10px", borderRadius: 4, fontSize: 10, fontWeight: 700 }}>FILO AI</div>
+                        <button className="btn btn-sm" onClick={generateBedPrep} disabled={generatingPreview}
+                          style={{ position: "absolute", bottom: 12, right: 12, background: "rgba(0,0,0,0.7)", color: "#fff", border: "none", fontSize: 11 }}>
+                          {generatingPreview ? "Regenerating..." : "Regenerate"}
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        {photoUrls.map((url, photoIdx) => (
+                          <div key={photoIdx} style={{
+                            position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 12,
+                            border: `2px solid ${drawMode === 'remove' ? '#DC2626' : '#E5E7EB'}`,
+                            cursor: drawMode ? 'crosshair' : 'default', userSelect: "none",
+                          }}>
+                            <img src={url} alt="Property" style={{ width: "100%", display: "block", pointerEvents: "none" }} draggable={false} />
+                            <svg
+                              style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", zIndex: 5 }}
+                              viewBox="0 0 1000 1000" preserveAspectRatio="none"
+                              onMouseDown={startDraw} onMouseMove={moveDraw} onMouseUp={endDraw} onMouseLeave={endDraw}
+                              onTouchStart={startDraw} onTouchMove={moveDraw} onTouchEnd={endDraw}
+                            >
+                              {(drawPaths || []).map((path, i) => {
+                                const pts = path?.points || path;
+                                if (!Array.isArray(pts) || pts.length < 2) return null;
+                                return <polygon key={i} points={pts.map(p => `${p.x},${p.y}`).join(' ')}
+                                  fill="rgba(220,38,38,0.3)" stroke="#DC2626" strokeWidth="3" strokeDasharray="8,4" />;
+                              })}
+                              {currentPath.length > 1 && (
+                                <polyline points={currentPath.map(p => `${p.x},${p.y}`).join(' ')}
+                                  fill="none" stroke="#DC2626" strokeWidth="3" strokeDasharray="6,3" />
+                              )}
+                            </svg>
+                            {drawMode === 'remove' && (
+                              <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", background: "#DC2626", color: "#fff", padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, zIndex: 25, pointerEvents: "none" }}>
+                                Draw around plants to remove
+                              </div>
+                            )}
+                            {!drawMode && drawPaths.length === 0 && (
+                              <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", textAlign: "center", zIndex: 3 }}>
+                                <div style={{ background: "rgba(0,0,0,0.75)", color: "#fff", padding: "12px 24px", borderRadius: 8, fontSize: 14, fontWeight: 600 }}>
+                                  Click "Start Drawing" then circle the plants to remove
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </>
+                    )}
+
+                    {/* Removal cost */}
+                    <div style={{ marginTop: 16 }}>
+                      <label className="form-label">Removal & haul-away cost</label>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <span style={{ fontSize: 14, fontWeight: 500 }}>$</span>
+                        <input className="form-input" style={{ width: 120 }} value={removalCost}
+                          onChange={e => setRemovalCost(e.target.value)} />
+                        <span style={{ fontSize: 13, color: "var(--filo-grey)" }}>Includes haul away</span>
+                      </div>
+                    </div>
+
+                    {removalPreview && (
+                      <div style={{ marginTop: 16, padding: 16, background: "var(--filo-green-pale)", borderRadius: "var(--radius-sm)", fontSize: 13, color: "var(--filo-green)" }}>
+                        ✅ Bed preparation complete. Click "Save & Continue" to set your design preferences.
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div style={{ textAlign: "center", padding: 40, color: "var(--filo-grey)" }}>
+                    <p>No photos uploaded. Go back to Photo Upload to add property photos.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          );
+        })()}
+
+        {/* Step 5: AI Design — bed prep image + design mode selector + preferences + render */}
+        {step === 5 && (() => {
+          const LAYER_COLORS = { back: '#2E7D32', middle: '#66BB6A', front: '#A5D6A7' };
+          const LAYER_LABELS = { back: 'Back Row — Foundation', middle: 'Middle Row — Color & Texture', front: 'Front Row — Border & Groundcover' };
+          const backPlants = designPlants.filter(p => (p.layer || p.notes || '').toLowerCase().includes('back'));
+          const middlePlants = designPlants.filter(p => (p.layer || p.notes || '').toLowerCase().includes('middle'));
+          const frontPlants = designPlants.filter(p => (p.layer || p.notes || '').toLowerCase().includes('front'));
+          const ungrouped = designPlants.filter(p => !['back','middle','front'].some(l => (p.layer || p.notes || '').toLowerCase().includes(l)));
+          const layerGroups = [
+            ...(backPlants.length ? [{ key:'back', plants: backPlants }] : []),
+            ...(middlePlants.length ? [{ key:'middle', plants: middlePlants }] : []),
+            ...(frontPlants.length ? [{ key:'front', plants: frontPlants }] : []),
+            ...(ungrouped.length && (backPlants.length || middlePlants.length || frontPlants.length) ? [{ key:'other', plants: ungrouped }] : []),
+          ];
+          const allGrouped = layerGroups.length > 0;
+          const photoUrls = Object.values(uploadedPhotos).flat().map(p => p?.file?.cdn_url || p?.cdn_url).filter(Boolean);
+          const narrative = design?.narrative || design?.ai_prompt?.narrative || '';
+
+          return (
+          <div className="scale-in">
+            {/* Bed Prep Image (carried from Step 4) */}
+            <div className="card" style={{ marginBottom: 24 }}>
+              <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Prepared Bed</h3></div>
+              <div className="card-body">
+                {removalPreview ? (
+                  <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+                    <img src={removalPreview} alt="Prepared Bed" style={{ width: "100%", display: "block" }} />
+                    <div style={{ position: "absolute", top: 12, left: 12, background: "var(--filo-green)", color: "#fff", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>PLANTS REMOVED — READY FOR DESIGN</div>
+                  </div>
+                ) : photoUrls.length > 0 ? (
+                  <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+                    <img src={photoUrls[0]} alt="Property" style={{ width: "100%", display: "block" }} />
+                    <div style={{ position: "absolute", top: 12, left: 12, background: "var(--filo-silver)", color: "#fff", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>ORIGINAL PHOTO</div>
+                  </div>
+                ) : (
+                  <p style={{ color: "var(--filo-grey)", fontSize: 14 }}>No photo available. Go back to Step 3 to upload a property photo.</p>
+                )}
+              </div>
+            </div>
+
+            {/* Design Mode Toggle */}
+            <div className="card" style={{ marginBottom: 24 }}>
+              <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Design Mode</h3></div>
+              <div className="card-body">
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <div onClick={() => setDesignMode && setDesignMode('auto')}
+                    style={{ padding: 20, borderRadius: "var(--radius-md)", border: `2px solid ${(!designMode || designMode === 'auto') ? 'var(--filo-green)' : 'var(--filo-border)'}`, background: (!designMode || designMode === 'auto') ? 'var(--filo-green-pale)' : '#fff', cursor: "pointer", textAlign: "center", transition: "all 0.2s" }}>
+                    <div style={{ fontSize: 28, marginBottom: 8 }}>🤖</div>
+                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>AI Auto-Design</div>
+                    <div style={{ fontSize: 12, color: "var(--filo-grey)" }}>AI selects plants & generates a photorealistic render based on your preferences</div>
+                  </div>
+                  <div onClick={() => setDesignMode && setDesignMode('manual')}
+                    style={{ padding: 20, borderRadius: "var(--radius-md)", border: `2px solid ${designMode === 'manual' ? 'var(--filo-green)' : 'var(--filo-border)'}`, background: designMode === 'manual' ? 'var(--filo-green-pale)' : '#fff', cursor: "pointer", textAlign: "center", transition: "all 0.2s", opacity: 0.5 }}>
+                    <div style={{ fontSize: 28, marginBottom: 8 }}>✋</div>
+                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Manual Design</div>
+                    <div style={{ fontSize: 12, color: "var(--filo-grey)" }}>Drag & drop plants onto the bed yourself (coming soon)</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Design Preferences (inline) */}
+            <div className="card" style={{ marginBottom: 24 }}>
+              <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Design Preferences</h3></div>
+              <div className="card-body">
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: 12 }}>Sun Exposure</label>
+                    <div className="pill-group">
+                      {["Full Sun", "Partial Shade", "Full Shade"].map(opt => (
+                        <span key={opt} className={cn("pill", project.sun === opt && "active")}
+                          onClick={() => updateProject({ sun: opt })} style={{ fontSize: 12, padding: "4px 10px" }}>{opt}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: 12 }}>Design Style</label>
+                    <div className="pill-group">
+                      {["Formal", "Naturalistic", "Modern", "Tropical", "Xeriscape"].map(opt => (
+                        <span key={opt} className={cn("pill", project.style === opt && "active")}
+                          onClick={() => updateProject({ style: opt })} style={{ fontSize: 12, padding: "4px 10px" }}>{opt}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="form-group" style={{ margin: 0, marginBottom: 16 }}>
+                  <label className="form-label" style={{ fontSize: 12 }}>Specific Plant Requests</label>
+                  <textarea className="form-input" placeholder="e.g. I want red knockout roses along the walkway, hydrangeas by the front door..."
+                    value={project.specialRequests} onChange={e => updateProject({ specialRequests: e.target.value })}
+                    style={{ minHeight: 60, fontSize: 13 }} />
+                </div>
+                {/* Generate AI Design button */}
+                {!design && !loading && (
+                  <button className="btn btn-primary" style={{ width: "100%", fontWeight: 700, padding: "12px 24px" }}
+                    onClick={async () => {
+                      setLoading(true);
+                      try {
+                        const api = apiRef.current;
+                        if (projectId) {
+                          await api.projects.update(projectId, {
+                            sun_exposure: project.sun,
+                            design_style: project.style,
+                            special_requests: project.specialRequests,
+                            lighting_requested: project.lighting,
+                            hardscape_changes: project.hardscape,
+                          });
+                          await api.projects.updateStatus(projectId, 'design_generation');
+                          const designResult = await api.projects.generateDesign(projectId);
+                          const d = designResult.design || designResult;
+                          setDesign(d);
+                          const plants = designResult.plants || d?.plants || [];
+                          let finalPlants = plants;
+                          if (finalPlants.length === 0 && d?.design_data) {
+                            try {
+                              const dd = typeof d.design_data === 'string' ? JSON.parse(d.design_data) : d.design_data;
+                              finalPlants = dd.plants || [];
+                            } catch (e) {}
+                          }
+                          setDesignPlants(finalPlants);
+                        }
+                      } catch (e) {
+                        alert('Design generation failed: ' + e.message);
+                      } finally { setLoading(false); }
+                    }}>
+                    {loading ? '⟳ Generating AI Design...' : '✨ Generate AI Design'}
+                  </button>
+                )}
+                {design && (
+                  <div style={{ padding: 12, background: "var(--filo-green-pale)", borderRadius: "var(--radius-sm)", fontSize: 13, color: "var(--filo-green)", display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 18 }}>✓</span>
+                    <span>AI Design complete — {designPlants.length} plants selected. {design?.narrative ? design.narrative.substring(0, 120) + '...' : ''}</span>
                   </div>
                 )}
               </div>
             </div>
 
-            {designPlants.length > 0 && (
-              <div className="card">
-                <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Design Preview — Plant Selection</h3></div>
-                <div className="card-body">
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {designPlants.map((p, i) => (
-                      <span key={i} style={{ fontSize: 12, background: "var(--filo-offwhite)", padding: "6px 12px", borderRadius: 12 }}>
-                        🌿 {p.common_name || p.plant_name || p.name} {p.quantity ? `× ${p.quantity}` : ''}
-                      </span>
-                    ))}
+            {/* AI-Generated Final Design Visualization */}
+            {photoUrls.length > 0 && designPlants.length > 0 && (() => {
+              const api = apiRef.current;
+              const removedPlantsList = detectedPlants.filter(p => plantMarks[p.id] === 'remove');
+              const keptPlantsList = detectedPlants.filter(p => plantMarks[p.id] !== 'remove');
+
+              // Build mask from drawPaths (carried from step 4)
+              const getMaskFromDrawPaths = () => {
+                if (!drawPaths || drawPaths.length === 0) return null;
+                const canvas = document.createElement('canvas');
+                canvas.width = 1024; canvas.height = 1024;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, 1024, 1024);
+                ctx.fillStyle = '#000000';
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 50;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                for (const rawPath of drawPaths) {
+                  const path = Array.isArray(rawPath) ? rawPath : (rawPath?.points || []);
+                  if (path.length < 2) continue;
+                  ctx.beginPath();
+                  ctx.moveTo(path[0].x * 1.024, path[0].y * 1.024);
+                  for (let i = 1; i < path.length; i++) {
+                    ctx.lineTo(path[i].x * 1.024, path[i].y * 1.024);
+                  }
+                  ctx.closePath();
+                  ctx.fill();
+                  ctx.stroke();
+                }
+                return canvas.toDataURL('image/png');
+              };
+
+              const generateFinalDesign = async () => {
+                if (!api || generatingRender) return;
+                setGeneratingRender(true);
+                try {
+                  const maskDataUrl = getMaskFromDrawPaths();
+                  const result = await api.designRender.generate(
+                    photoUrls[0],
+                    designPlants,
+                    keptPlantsList,
+                    removedPlantsList,
+                    project.style || 'naturalistic',
+                    design?.narrative || design?.design_notes || '',
+                    maskDataUrl
+                  );
+                  setDesignRenderUrl(result.renderUrl);
+                } catch (err) {
+                  console.error('Design render failed:', err.message);
+                  alert('Design render failed: ' + err.message);
+                } finally { setGeneratingRender(false); }
+              };
+
+              return (
+              <>
+                {/* Final Design — new plants installed */}
+                <div className="card" style={{ marginBottom: 24 }}>
+                  <div className="card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Final Design Installed</h3>
+                    {!designRenderUrl && (
+                      <button className="btn btn-primary btn-sm" onClick={generateFinalDesign} disabled={generatingRender}
+                        style={{ fontWeight: 600 }}>
+                        {generatingRender ? '⟳ Rendering Design...' : '✨ Generate Design Render'}
+                      </button>
+                    )}
+                  </div>
+                  <div className="card-body">
+                    {designRenderUrl ? (
+                      <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+                        <img src={designRenderUrl} alt="Final Design Render" style={{ width: "100%", display: "block", borderRadius: "var(--radius-md)" }} />
+                        <div style={{ position: "absolute", top: 12, left: 12, background: "var(--filo-green)", color: "#fff", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
+                          FINAL DESIGN — {designPlants.length} new plants installed
+                        </div>
+                        <div style={{ position: "absolute", top: 12, right: 12, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "4px 10px", borderRadius: 4, fontSize: 10, fontWeight: 700 }}>FILO AI Render</div>
+                        <button className="btn btn-sm btn-ghost" onClick={() => { setDesignRenderUrl(null); }}
+                          style={{ position: "absolute", bottom: 12, left: 12, background: "rgba(0,0,0,0.7)", color: "#fff", border: "none", fontSize: 11 }}>← Redo</button>
+                        <button className="btn btn-sm btn-ghost" onClick={generateFinalDesign} disabled={generatingRender}
+                          style={{ position: "absolute", bottom: 12, right: 12, background: "rgba(0,0,0,0.7)", color: "#fff", border: "none", fontSize: 11 }}>
+                          {generatingRender ? "Regenerating..." : "Regenerate"}
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+                        <img src={photoUrls[0]} alt="Property" style={{ width: "100%", display: "block", filter: "brightness(0.85) saturate(0.5)" }} />
+                        {/* Layer zone labels */}
+                        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "55%", display: "flex", flexDirection: "column" }}>
+                          {allGrouped && backPlants.length > 0 && (
+                            <div style={{ flex: 1, background: "rgba(46,125,50,0.2)", borderTop: "2px dashed rgba(46,125,50,0.5)", display: "flex", alignItems: "center", paddingLeft: 12 }}>
+                              <span style={{ background: "rgba(46,125,50,0.85)", color: "#fff", fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4 }}>BACK — {backPlants.map(p => `${p.common_name || p.plant_name} ×${p.quantity || 1}`).join(', ')}</span>
+                            </div>
+                          )}
+                          {allGrouped && middlePlants.length > 0 && (
+                            <div style={{ flex: 1, background: "rgba(102,187,106,0.2)", borderTop: "2px dashed rgba(102,187,106,0.5)", display: "flex", alignItems: "center", paddingLeft: 12 }}>
+                              <span style={{ background: "rgba(102,187,106,0.85)", color: "#fff", fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4 }}>MIDDLE — {middlePlants.map(p => `${p.common_name || p.plant_name} ×${p.quantity || 1}`).join(', ')}</span>
+                            </div>
+                          )}
+                          {allGrouped && frontPlants.length > 0 && (
+                            <div style={{ flex: 1, background: "rgba(165,214,167,0.25)", borderTop: "2px dashed rgba(165,214,167,0.6)", display: "flex", alignItems: "center", paddingLeft: 12 }}>
+                              <span style={{ background: "rgba(165,214,167,0.9)", color: "#1a1a2e", fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4 }}>FRONT — {frontPlants.map(p => `${p.common_name || p.plant_name} ×${p.quantity || 1}`).join(', ')}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ position: "absolute", top: 12, right: 12, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "4px 10px", borderRadius: 4, fontSize: 10, fontWeight: 700 }}>FILO Design</div>
+                        <div style={{ position: "absolute", bottom: 12, left: 12, right: 12, textAlign: "center" }}>
+                          <span style={{ background: "rgba(0,0,0,0.7)", color: "#fff", padding: "6px 16px", borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
+                            Click "Generate Design Render" to see AI visualization of finished landscape
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
+              </>
+              );
+            })()}
+
+            {designPlants.length > 0 && (
+              <>
+                {/* Layered Plant Palette */}
+                <div className="card" style={{ marginBottom: 24 }}>
+                  <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Plant Palette</h3></div>
+                  <div className="card-body" style={{ padding: 0 }}>
+                    {allGrouped ? (
+                      layerGroups.map(({ key, plants: lp }) => (
+                        <div key={key}>
+                          <div style={{ padding: "10px 16px", background: (LAYER_COLORS[key] || '#888') + '15', borderBottom: `2px solid ${LAYER_COLORS[key] || '#888'}40`, display: "flex", alignItems: "center", gap: 8 }}>
+                            <div style={{ width: 12, height: 12, borderRadius: 3, background: LAYER_COLORS[key] || '#888' }} />
+                            <span style={{ fontSize: 12, fontWeight: 700, color: LAYER_COLORS[key] || '#888', textTransform: "uppercase", letterSpacing: 0.5 }}>{LAYER_LABELS[key] || 'Other Plants'}</span>
+                          </div>
+                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+                            <tbody>
+                              {lp.map((p, i) => {
+                                const qty = p.quantity || 1;
+                                const cost = parseFloat(p.unit_cost) || 0;
+                                return (
+                                  <tr key={i} style={{ borderBottom: "1px solid var(--filo-light)" }}>
+                                    <td style={{ padding: "10px 16px", width: 40 }}>
+                                      <div style={{ width: 28, height: 28, borderRadius: "50%", background: LAYER_COLORS[key] || '#888', color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>{i + 1}</div>
+                                    </td>
+                                    <td style={{ padding: "10px 16px" }}>
+                                      <div style={{ fontWeight: 600 }}>{p.common_name || p.plant_name}</div>
+                                      {p.botanical_name && <div style={{ fontSize: 12, color: "var(--filo-grey)", fontStyle: "italic" }}>{p.botanical_name}</div>}
+                                      {p.spacing_inches && <div style={{ fontSize: 11, color: "var(--filo-silver)" }}>Spacing: {p.spacing_inches}" O.C.</div>}
+                                    </td>
+                                    <td style={{ padding: "10px 16px", color: "var(--filo-grey)", whiteSpace: "nowrap" }}>{p.container_size || '—'}</td>
+                                    <td style={{ padding: "10px 16px", textAlign: "center", fontWeight: 600 }}>{qty}</td>
+                                    <td style={{ padding: "10px 16px", textAlign: "right", whiteSpace: "nowrap" }}>{cost > 0 ? fmt(cost) : '—'}</td>
+                                    <td style={{ padding: "10px 16px", textAlign: "right", fontWeight: 600, whiteSpace: "nowrap" }}>{cost > 0 ? fmt(cost * qty) : '—'}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      ))
+                    ) : (
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+                        <thead>
+                          <tr style={{ background: "var(--filo-offwhite)", borderBottom: "2px solid var(--filo-border)" }}>
+                            <th style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, color: "var(--filo-grey)" }}>#</th>
+                            <th style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, color: "var(--filo-grey)" }}>Plant</th>
+                            <th style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, color: "var(--filo-grey)" }}>Size</th>
+                            <th style={{ padding: "10px 16px", textAlign: "center", fontWeight: 600, color: "var(--filo-grey)" }}>Qty</th>
+                            <th style={{ padding: "10px 16px", textAlign: "right", fontWeight: 600, color: "var(--filo-grey)" }}>Unit</th>
+                            <th style={{ padding: "10px 16px", textAlign: "right", fontWeight: 600, color: "var(--filo-grey)" }}>Subtotal</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {designPlants.map((p, i) => {
+                            const qty = p.quantity || 1; const cost = parseFloat(p.unit_cost) || 0;
+                            return (
+                              <tr key={i} style={{ borderBottom: "1px solid var(--filo-light)" }}>
+                                <td style={{ padding: "12px 16px", color: "var(--filo-silver)" }}>{i + 1}</td>
+                                <td style={{ padding: "12px 16px" }}>
+                                  <div style={{ fontWeight: 600 }}>{p.common_name || p.plant_name}</div>
+                                  {p.botanical_name && <div style={{ fontSize: 12, color: "var(--filo-grey)", fontStyle: "italic" }}>{p.botanical_name}</div>}
+                                </td>
+                                <td style={{ padding: "12px 16px", color: "var(--filo-grey)" }}>{p.container_size || '—'}</td>
+                                <td style={{ padding: "12px 16px", textAlign: "center", fontWeight: 500 }}>{qty}</td>
+                                <td style={{ padding: "12px 16px", textAlign: "right" }}>{cost > 0 ? fmt(cost) : '—'}</td>
+                                <td style={{ padding: "12px 16px", textAlign: "right", fontWeight: 600 }}>{cost > 0 ? fmt(cost * qty) : '—'}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                    {/* Totals */}
+                    <div style={{ padding: "14px 16px", background: "var(--filo-offwhite)", borderTop: "2px solid var(--filo-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontWeight: 700 }}>Total Plant Material — {designPlants.reduce((s, p) => s + (p.quantity || 1), 0)} plants</span>
+                      <span style={{ fontWeight: 700, color: "var(--filo-green)", fontSize: 16 }}>
+                        {fmt(designPlants.reduce((s, p) => s + ((parseFloat(p.unit_cost) || 0) * (p.quantity || 1)), 0))}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </>
             )}
           </div>
-        )}
+          );
+        })()}
 
-        {/* Step 7: Review & Adjust — REAL chat */}
-        {step === 7 && (
+        {/* Step 6: Review & Adjust — REAL chat */}
+        {step === 6 && (
           <div className="scale-in" style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 24 }}>
             <div>
               <div className="card" style={{ marginBottom: 24 }}>
@@ -1275,18 +1791,36 @@ function NewProjectPage() {
                   <h3 style={{ fontFamily: "var(--font-display)" }}>Design Canvas</h3>
                 </div>
                 <div className="card-body">
-                  <div className="design-canvas" style={{ minHeight: 450 }}>
-                    <div className="house"></div>
-                    <div className="bed-area">
-                      {(designPlants.length > 0 ? designPlants : PLANTS_DB).slice(0, 8).map((plant, i) => (
-                        <div key={plant.id || i} className="design-plant" title={plant.common_name || plant.name}
+                  <div style={{ position: "relative", width: "100%", paddingBottom: "65%", background: "linear-gradient(180deg, #e8f5e9 0%, #c8e6c9 40%, #a5d6a7 100%)", borderRadius: "var(--radius-md)", overflow: "hidden", border: "1px solid var(--filo-border)" }}>
+                    {[20,40,60,80].map(v => <div key={`v${v}`} style={{ position:"absolute", left:`${v}%`, top:0, bottom:0, width:1, background:"rgba(255,255,255,0.25)" }} />)}
+                    {[25,50,75].map(h => <div key={`h${h}`} style={{ position:"absolute", top:`${h}%`, left:0, right:0, height:1, background:"rgba(255,255,255,0.25)" }} />)}
+                    <div style={{ position:"absolute", top:"2%", left:"20%", width:"60%", height:"16%", background:"rgba(120,100,80,0.15)", borderRadius:"0 0 6px 6px", borderTop:"3px solid rgba(120,100,80,0.3)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                      <span style={{ fontSize:11, color:"rgba(0,0,0,0.25)", fontWeight:600 }}>HOUSE</span>
+                    </div>
+                    {(designPlants.length > 0 ? designPlants : []).map((plant, i) => {
+                      const px = parseFloat(plant.position_x) || (10 + (i * 80 / Math.max(designPlants.length - 1, 1)));
+                      const py = parseFloat(plant.position_y) || (25 + (i % 3) * 25);
+                      const isTree = (plant.notes || plant.common_name || '').toLowerCase().match(/tree|oak|maple|elm|pine|cedar/);
+                      const size = isTree ? 34 : 24;
+                      return (
+                        <div key={plant.id || i} title={`${plant.common_name || plant.plant_name} × ${plant.quantity || 1}`}
                           style={{
-                            left: `${8 + (i * 12)}%`, top: `${10 + (i % 3) * 25}%`,
-                            fontSize: (plant.category === "tree" || plant.type === "tree") ? 36 : 24,
-                          }}>
-                          {plant.img || "🌿"}
+                            position: "absolute", left: `${px}%`, top: `${py}%`, transform: "translate(-50%, -50%)",
+                            width: size, height: size, borderRadius: "50%",
+                            background: isTree ? "rgba(46,125,50,0.85)" : "rgba(76,175,80,0.8)",
+                            border: "2px solid rgba(255,255,255,0.9)", boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            color: "#fff", fontSize: 9, fontWeight: 700, cursor: "pointer",
+                            transition: "transform 0.15s ease",
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.transform = "translate(-50%, -50%) scale(1.3)"}
+                          onMouseLeave={e => e.currentTarget.style.transform = "translate(-50%, -50%) scale(1)"}>
+                          {i + 1}
                         </div>
-                      ))}
+                      );
+                    })}
+                    <div style={{ position:"absolute", bottom:8, right:8, background:"rgba(255,255,255,0.9)", padding:"5px 10px", borderRadius:6, fontSize:10, color:"var(--filo-grey)" }}>
+                      {designPlants.length} plants · Click to adjust
                     </div>
                   </div>
                 </div>
@@ -1337,8 +1871,8 @@ function NewProjectPage() {
           </div>
         )}
 
-        {/* Step 8: Estimate — REAL data */}
-        {step === 8 && (
+        {/* Step 7: Estimate — REAL data */}
+        {step === 7 && (
           <div className="scale-in" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
             <div className="card">
               <div className="card-header">
@@ -1349,7 +1883,7 @@ function NewProjectPage() {
                   <table>
                     <thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead>
                     <tbody>
-                      {estimate.line_items.filter(li => li.category === 'plant' || li.line_type === 'plant').map((li, i) => (
+                      {estimate.line_items.filter(li => li.category === 'plant_material' || li.category === 'plant' || li.line_type === 'plant').map((li, i) => (
                         <tr key={i}>
                           <td>{li.description || li.name}</td>
                           <td>{li.quantity}</td>
@@ -1388,7 +1922,7 @@ function NewProjectPage() {
                     </div>
                     <div className="estimate-section" style={{ borderTop: "1px solid var(--filo-light)", paddingTop: 12 }}>
                       {estimate.subtotal && <div className="estimate-row"><span>Subtotal</span><span>{fmt(estimate.subtotal)}</span></div>}
-                      {estimate.tax && <div className="estimate-row"><span>Tax</span><span>{fmt(estimate.tax)}</span></div>}
+                      {(estimate.tax_amount || estimate.tax) && <div className="estimate-row"><span>Tax</span><span>{fmt(estimate.tax_amount || estimate.tax)}</span></div>}
                       <div className="estimate-row total"><span>Total</span><span className="estimate-total">{fmt(estimate.total || estimate.grand_total || 0)}</span></div>
                     </div>
                   </>
@@ -1408,8 +1942,8 @@ function NewProjectPage() {
           </div>
         )}
 
-        {/* Step 9: Submittal — REAL data */}
-        {step === 9 && (
+        {/* Step 8: Submittal — REAL data */}
+        {step === 8 && (
           <div className="scale-in">
             <div className="submittal-preview">
               <div className="submittal-cover">
@@ -1461,8 +1995,8 @@ function NewProjectPage() {
           </div>
         )}
 
-        {/* Step 10: Complete */}
-        {step === 10 && (
+        {/* Step 9: Complete */}
+        {step === 9 && (
           <div className="card scale-in" style={{ maxWidth: 600, margin: "0 auto" }}>
             <div className="card-body" style={{ textAlign: "center", padding: 60 }}>
               <div style={{ fontSize: 64, marginBottom: 16 }}>✅</div>
@@ -1487,7 +2021,7 @@ function NewProjectPage() {
               </div>
               <div style={{ marginTop: 32, display: "flex", gap: 12, justifyContent: "center" }}>
                 {exportData?.downloadUrl && <a href={exportData.downloadUrl} className="btn btn-primary" target="_blank" rel="noreferrer">Download All</a>}
-                <button className="btn btn-secondary" onClick={() => setPage && setPage('projects')}>View Projects</button>
+                <button className="btn btn-secondary" onClick={() => { localStorage.removeItem('filo_wizard_checkpoint'); setPage && setPage('projects'); }}>View Projects</button>
               </div>
             </div>
           </div>
@@ -1707,9 +2241,37 @@ function ClientsPage() {
 // ─── Settings Page ───────────────────────────────────────────────
 function SettingsPage() {
   const [tab, setTab] = useState("company");
+  const [settings, setSettings] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const apiRef = useRef(null);
+
+  useEffect(() => {
+    import('./api.js').then(mod => {
+      apiRef.current = mod.default;
+      mod.default.company.get().then(data => setSettings(data)).catch(console.error);
+    });
+  }, []);
+
+  const update = (key, val) => setSettings(prev => ({ ...prev, [key]: val }));
+
+  const save = async (fields) => {
+    if (!apiRef.current) return;
+    setSaving(true); setMsg(null);
+    try {
+      await apiRef.current.company.update(fields);
+      setMsg('Saved!');
+      setTimeout(() => setMsg(null), 2000);
+    } catch (e) { setMsg(`Error: ${e.message}`); }
+    finally { setSaving(false); }
+  };
+
+  if (!settings) return <div className="fade-in"><p>Loading settings...</p></div>;
+
   return (
     <div className="fade-in">
       <div className="page-header"><div><h2>Settings</h2><p>Manage your FILO workspace</p></div></div>
+      {msg && <div style={{ padding: 10, marginBottom: 16, borderRadius: 'var(--radius-sm)', background: msg.startsWith('Error') ? '#FEE2E2' : 'var(--filo-green-pale)', color: msg.startsWith('Error') ? '#991B1B' : 'var(--filo-green)', fontSize: 13 }}>{msg}</div>}
       <div className="page-body">
         <div className="tabs" style={{ maxWidth: 500 }}>
           {[["company", "Company"], ["pricing", "Pricing"], ["tax", "Tax & Terms"], ["design", "Design Defaults"]].map(([val, label]) => (
@@ -1720,16 +2282,16 @@ function SettingsPage() {
         {tab === "company" && (
           <div className="card" style={{ maxWidth: 600 }}>
             <div className="card-body">
-              <div className="form-group"><label className="form-label">Company Name</label><input className="form-input" defaultValue="King's Garden Landscaping" /></div>
-              <div className="form-group">
-                <label className="form-label">Logo</label>
-                <div className="upload-zone" style={{ padding: 20 }}><p>📷 Click to upload company logo</p></div>
+              <div className="form-group"><label className="form-label">Company Name</label><input className="form-input" value={settings.name || ''} onChange={e => update('name', e.target.value)} /></div>
+              <div className="form-group"><label className="form-label">Phone</label><input className="form-input" value={settings.phone || ''} onChange={e => update('phone', e.target.value)} /></div>
+              <div className="form-group"><label className="form-label">Email</label><input className="form-input" value={settings.email || ''} onChange={e => update('email', e.target.value)} /></div>
+              <div className="form-group"><label className="form-label">License Number</label><input className="form-input" value={settings.license_number || ''} onChange={e => update('license_number', e.target.value)} /></div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div className="form-group"><label className="form-label">City</label><input className="form-input" value={settings.city || ''} onChange={e => update('city', e.target.value)} /></div>
+                <div className="form-group"><label className="form-label">State</label><input className="form-input" value={settings.state || ''} onChange={e => update('state', e.target.value)} /></div>
               </div>
-              <div className="form-group"><label className="form-label">Phone</label><input className="form-input" defaultValue="(713) 555-0100" /></div>
-              <div className="form-group"><label className="form-label">Email</label><input className="form-input" defaultValue="info@kingsgarden.com" /></div>
-              <div className="form-group"><label className="form-label">License Number</label><input className="form-input" defaultValue="TX-4800A / LI#25321" /></div>
-              <div className="form-group"><label className="form-label">Geographic Location</label><input className="form-input" defaultValue="Houston, TX (USDA Zone 9a)" /></div>
-              <button className="btn btn-primary">Save Changes</button>
+              <div className="form-group"><label className="form-label">USDA Zone</label><input className="form-input" value={settings.usda_zone || ''} onChange={e => update('usda_zone', e.target.value)} /></div>
+              <button className="btn btn-primary" disabled={saving} onClick={() => save({ name: settings.name, phone: settings.phone, email: settings.email, license_number: settings.license_number, city: settings.city, state: settings.state, usda_zone: settings.usda_zone })}>{saving ? 'Saving...' : 'Save Changes'}</button>
             </div>
           </div>
         )}
@@ -1739,21 +2301,55 @@ function SettingsPage() {
             <div className="card-body">
               <div className="form-group">
                 <label className="form-label">Labor Pricing Method</label>
-                <select className="form-input">
-                  <option>Per Gallon</option>
-                  <option>Per Estimated Man Hours</option>
-                  <option>Lump Sum</option>
+                <select className="form-input" value={settings.labor_pricing_method || 'per_gallon'} onChange={e => update('labor_pricing_method', e.target.value)}>
+                  <option value="per_gallon">Per Gallon</option>
+                  <option value="per_man_hour">Per Estimated Man Hours</option>
+                  <option value="lump_sum">Lump Sum</option>
                 </select>
               </div>
+              {settings.labor_pricing_method === 'per_gallon' && (
+                <div className="form-group" style={{ background: 'var(--filo-green-pale)', padding: 16, borderRadius: 'var(--radius-sm)', marginBottom: 16 }}>
+                  <label className="form-label" style={{ fontWeight: 600 }}>Price Per Gallon ($)</label>
+                  <p style={{ fontSize: 12, color: 'var(--filo-grey)', marginBottom: 8 }}>Labor cost applied per gallon of plant container size (e.g., a 3-gal plant = 3 × this rate)</p>
+                  <input className="form-input" type="number" step="0.01" value={settings.labor_rate_per_gallon ?? ''} onChange={e => update('labor_rate_per_gallon', e.target.value)} placeholder="e.g. 12.50" />
+                </div>
+              )}
+              {settings.labor_pricing_method === 'per_man_hour' && (
+                <div className="form-group" style={{ background: 'var(--filo-green-pale)', padding: 16, borderRadius: 'var(--radius-sm)', marginBottom: 16 }}>
+                  <label className="form-label" style={{ fontWeight: 600 }}>Hourly Labor Rate ($)</label>
+                  <p style={{ fontSize: 12, color: 'var(--filo-grey)', marginBottom: 8 }}>Cost per man-hour for installation labor</p>
+                  <input className="form-input" type="number" step="0.01" value={settings.labor_rate_per_hour ?? ''} onChange={e => update('labor_rate_per_hour', e.target.value)} placeholder="e.g. 65.00" />
+                </div>
+              )}
+              {settings.labor_pricing_method === 'lump_sum' && (
+                <div className="form-group" style={{ background: 'var(--filo-green-pale)', padding: 16, borderRadius: 'var(--radius-sm)', marginBottom: 16 }}>
+                  <label className="form-label" style={{ fontWeight: 600 }}>Default Lump Sum ($)</label>
+                  <p style={{ fontSize: 12, color: 'var(--filo-grey)', marginBottom: 8 }}>Default flat-rate labor charge per project</p>
+                  <input className="form-input" type="number" step="0.01" value={settings.labor_lump_default ?? ''} onChange={e => update('labor_lump_default', e.target.value)} placeholder="e.g. 2500.00" />
+                </div>
+              )}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                <div className="form-group"><label className="form-label">Material Markup %</label><input className="form-input" defaultValue="35" /></div>
-                <div className="form-group"><label className="form-label">Delivery Fee</label><input className="form-input" defaultValue="150.00" /></div>
-                <div className="form-group"><label className="form-label">Soil Amendment / cy</label><input className="form-input" defaultValue="95.00" /></div>
-                <div className="form-group"><label className="form-label">Mulch / cy</label><input className="form-input" defaultValue="85.00" /></div>
-                <div className="form-group"><label className="form-label">Edging / lf</label><input className="form-input" defaultValue="8.00" /></div>
-                <div className="form-group"><label className="form-label">Removal Base Fee</label><input className="form-input" defaultValue="350.00" /></div>
+                <div className="form-group"><label className="form-label">Material Markup %</label><input className="form-input" type="number" value={settings.material_markup_pct ?? 35} onChange={e => update('material_markup_pct', e.target.value)} /></div>
+                <div className="form-group"><label className="form-label">Delivery Fee ($)</label><input className="form-input" type="number" step="0.01" value={settings.delivery_fee ?? 150} onChange={e => update('delivery_fee', e.target.value)} /></div>
+                <div className="form-group"><label className="form-label">Soil Amendment / cy ($)</label><input className="form-input" type="number" step="0.01" value={settings.soil_amendment_per_cy ?? 95} onChange={e => update('soil_amendment_per_cy', e.target.value)} /></div>
+                <div className="form-group"><label className="form-label">Mulch / cy ($)</label><input className="form-input" type="number" step="0.01" value={settings.mulch_per_cy ?? 85} onChange={e => update('mulch_per_cy', e.target.value)} /></div>
+                <div className="form-group"><label className="form-label">Edging / lf ($)</label><input className="form-input" type="number" step="0.01" value={settings.edging_per_lf ?? 8} onChange={e => update('edging_per_lf', e.target.value)} /></div>
+                <div className="form-group"><label className="form-label">Removal Base Fee ($)</label><input className="form-input" type="number" step="0.01" value={settings.removal_base_fee ?? 350} onChange={e => update('removal_base_fee', e.target.value)} /></div>
+                <div className="form-group"><label className="form-label">Irrigation Hourly Rate ($)</label><input className="form-input" type="number" step="0.01" value={settings.irrigation_hourly_rate ?? ''} onChange={e => update('irrigation_hourly_rate', e.target.value)} placeholder="e.g. 85.00" /></div>
               </div>
-              <button className="btn btn-primary">Save Pricing</button>
+              <button className="btn btn-primary" disabled={saving} onClick={() => save({
+                labor_pricing_method: settings.labor_pricing_method,
+                labor_rate_per_gallon: parseFloat(settings.labor_rate_per_gallon) || null,
+                labor_rate_per_hour: parseFloat(settings.labor_rate_per_hour) || null,
+                labor_lump_default: parseFloat(settings.labor_lump_default) || null,
+                material_markup_pct: parseFloat(settings.material_markup_pct) || 35,
+                delivery_fee: parseFloat(settings.delivery_fee) || 150,
+                soil_amendment_per_cy: parseFloat(settings.soil_amendment_per_cy) || 95,
+                mulch_per_cy: parseFloat(settings.mulch_per_cy) || 85,
+                edging_per_lf: parseFloat(settings.edging_per_lf) || 8,
+                removal_base_fee: parseFloat(settings.removal_base_fee) || 350,
+                irrigation_hourly_rate: parseFloat(settings.irrigation_hourly_rate) || null,
+              })}>{saving ? 'Saving...' : 'Save Pricing'}</button>
             </div>
           </div>
         )}
@@ -1763,16 +2359,28 @@ function SettingsPage() {
             <div className="card-body">
               <div className="form-group">
                 <label className="form-label">Include Tax on Estimates?</label>
-                <div className="toggle-wrap" style={{ marginTop: 8 }}>
-                  <div className="toggle on"></div><span>Yes</span>
+                <div style={{ marginTop: 8 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={settings.tax_enabled ?? true} onChange={e => update('tax_enabled', e.target.checked)} />
+                    <span>{settings.tax_enabled ? 'Yes — tax included' : 'No — tax excluded'}</span>
+                  </label>
                 </div>
               </div>
-              <div className="form-group"><label className="form-label">Tax Rate (%)</label><input className="form-input" defaultValue="8.25" /></div>
+              {settings.tax_enabled && (
+                <div className="form-group"><label className="form-label">Tax Rate (%)</label><input className="form-input" type="number" step="0.01" value={((settings.tax_rate || 0.0825) * 100).toFixed(2)} onChange={e => update('tax_rate', (parseFloat(e.target.value) || 0) / 100)} /></div>
+              )}
               <div className="form-group">
                 <label className="form-label">Default Terms & Conditions</label>
-                <textarea className="form-input" rows={6} defaultValue="50% deposit required to schedule work. Balance due upon completion. All plant material guaranteed for 1 year from installation date with proper watering. Payment by check, ACH, or credit card." />
+                <textarea className="form-input" rows={6} value={settings.default_terms || ''} onChange={e => update('default_terms', e.target.value)} placeholder="50% deposit required to schedule work..." />
               </div>
-              <button className="btn btn-primary">Save</button>
+              <div className="form-group">
+                <label className="form-label">Warranty Terms</label>
+                <textarea className="form-input" rows={3} value={settings.warranty_terms || ''} onChange={e => update('warranty_terms', e.target.value)} placeholder="1 year plant replacement warranty..." />
+              </div>
+              <button className="btn btn-primary" disabled={saving} onClick={() => save({
+                tax_enabled: settings.tax_enabled, tax_rate: parseFloat(settings.tax_rate) || 0.0825,
+                default_terms: settings.default_terms, warranty_terms: settings.warranty_terms,
+              })}>{saving ? 'Saving...' : 'Save Tax & Terms'}</button>
             </div>
           </div>
         )}
@@ -1783,16 +2391,16 @@ function SettingsPage() {
               <div className="form-group">
                 <label className="form-label">Default Design Style</label>
                 <div className="pill-group">
-                  {["Formal / Symmetrical", "Naturalistic / Cottage", "Modern / Minimalist", "Tropical", "Desert / Xeriscape"].map(opt => (
-                    <span key={opt} className={cn("pill", opt === "Naturalistic / Cottage" && "active")}>{opt}</span>
+                  {["formal", "naturalistic", "modern", "tropical", "xeriscape"].map(opt => (
+                    <span key={opt} className={cn("pill", settings.default_design_style === opt && "active")}
+                      style={{ cursor: 'pointer', textTransform: 'capitalize' }}
+                      onClick={() => update('default_design_style', opt)}>{opt}</span>
                   ))}
                 </div>
               </div>
-              <div className="form-group">
-                <label className="form-label">Nursery Availability List</label>
-                <div className="upload-zone" style={{ padding: 20 }}><p>📄 Upload PDF, Excel, CSV, or plain text</p></div>
-              </div>
-              <button className="btn btn-primary">Save Defaults</button>
+              <button className="btn btn-primary" disabled={saving} onClick={() => save({
+                default_design_style: settings.default_design_style ? settings.default_design_style.toLowerCase() : null,
+              })}>{saving ? 'Saving...' : 'Save Defaults'}</button>
             </div>
           </div>
         )}
@@ -1998,6 +2606,69 @@ function LoginPage({ onLogin, onShowRegister }) {
   );
 }
 
+// ─── Invite Accept Page ──────────────────────────────────────────
+function InviteAcceptPage({ inviteToken, onAccepted }) {
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+
+  const handleSubmit = async () => {
+    if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
+    if (password !== confirm) { setError("Passwords do not match."); return; }
+    setLoading(true);
+    setError("");
+    try {
+      const mod = await import('./api.js');
+      const result = await mod.auth.acceptInvite(inviteToken, password);
+      setSuccess(true);
+      setTimeout(() => {
+        window.history.replaceState({}, '', '/');
+        onAccepted(result.user);
+      }, 1200);
+    } catch (err) {
+      setError(err.message || "Invalid or expired invite link.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="login-page">
+      <div className="login-left">
+        <div style={{ maxWidth: 480, textAlign: "center" }}>
+          <div style={{ fontSize: 64, marginBottom: 16 }}>🌿</div>
+          <h1 style={{ fontFamily: "var(--font-display)", fontSize: 48, marginBottom: 16, lineHeight: 1.1 }}>FILO</h1>
+          <p style={{ fontSize: 20, opacity: 0.8, fontFamily: "var(--font-display)" }}>You've been invited to join a team.</p>
+        </div>
+      </div>
+      <div className="login-right">
+        <div className="login-card">
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, marginBottom: 4 }}>Set your password</h2>
+          <p style={{ fontSize: 14, color: "var(--filo-grey)", marginBottom: 24 }}>Create a password to activate your account.</p>
+          {success && <div style={{ background: "#D1FAE5", color: "#065F46", padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 16 }}>Account activated! Signing you in...</div>}
+          {error && <div style={{ background: "#FEE2E2", color: "#DC2626", padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 16 }}>{error}</div>}
+          <div className="form-group">
+            <label className="form-label">New Password</label>
+            <input className="form-input" type="password" placeholder="••••••••" value={password}
+              onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSubmit()} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Confirm Password</label>
+            <input className="form-input" type="password" placeholder="••••••••" value={confirm}
+              onChange={e => setConfirm(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSubmit()} />
+          </div>
+          <button className="btn btn-primary btn-lg" style={{ width: "100%", opacity: loading ? 0.6 : 1 }}
+            onClick={handleSubmit} disabled={loading || success}>
+            {loading ? "Activating..." : "Activate Account"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Register Page ───────────────────────────────────────────────
 function RegisterPage({ onRegister, onShowLogin }) {
   const [form, setForm] = useState({ companyName: "", firstName: "", lastName: "", email: "", phone: "", password: "", confirmPassword: "" });
@@ -2111,6 +2782,7 @@ function OnboardingWizard({ onComplete }) {
     tax_enabled: true, tax_rate: 0.0825, default_terms: '', warranty_terms: '',
   });
   const [logoFile, setLogoFile] = useState(null);
+  const [nurseryFile, setNurseryFile] = useState(null);
   const [logoPreview, setLogoPreview] = useState(null);
   const [selectedCrm, setSelectedCrm] = useState('');
   const [crmApiKey, setCrmApiKey] = useState('');
@@ -2129,26 +2801,29 @@ function OnboardingWizard({ onComplete }) {
     setError(null);
     setSaving(true);
     try {
-      if (step === 1 || step === 2 || step === 3 || step === 5 || step === 6) {
-        // Save company profile fields
-        const fields = {};
-        if (step === 1) { fields.name = co.name; }
-        if (step === 2) { fields.phone = co.phone; fields.email = co.email; fields.license_number = co.license_number; }
-        if (step === 3) { fields.city = co.city; fields.state = co.state; fields.usda_zone = co.usda_zone; fields.default_design_style = co.design_style; }
-        if (step === 5) { fields.labor_pricing_method = co.labor_pricing_method; fields.material_markup_pct = parseFloat(co.material_markup_pct) || 35; fields.delivery_fee = parseFloat(co.delivery_fee) || 150; }
-        if (step === 6) { fields.tax_enabled = co.tax_enabled; fields.tax_rate = parseFloat(co.tax_rate) || 0.0825; fields.default_terms = co.default_terms; fields.warranty_terms = co.warranty_terms; }
+      // Save company profile fields for relevant steps
+      const fields = {};
+      if (step === 1) { fields.name = co.name; }
+      if (step === 2) { fields.phone = co.phone; fields.email = co.email; fields.license_number = co.license_number; }
+      if (step === 3) { fields.city = co.city; fields.state = co.state; fields.usda_zone = co.usda_zone; if (co.design_style) fields.default_design_style = co.design_style.toLowerCase(); }
+      if (step === 5) { fields.labor_pricing_method = co.labor_pricing_method; fields.material_markup_pct = parseFloat(co.material_markup_pct) || 35; fields.delivery_fee = parseFloat(co.delivery_fee) || 150; }
+      if (step === 6) { fields.tax_enabled = co.tax_enabled; fields.tax_rate = parseFloat(co.tax_rate) || 0.0825; fields.default_terms = co.default_terms; fields.warranty_terms = co.warranty_terms; }
+      if (step === 7) { /* CRM Connect — settings saved via CRM UI, nothing extra to persist */ }
+      if (Object.keys(fields).length > 0) {
         await apiRef.current.company.update(fields);
-
-        // Upload logo if selected on step 1
-        if (step === 1 && logoFile) {
-          try {
-            await apiRef.current.files.upload(logoFile, 'logo');
-          } catch (e) { console.log('Logo upload:', e.message); }
-        }
       }
-      if (step === 4 && nurseryInputRef.current?.files?.[0]) {
+
+      // Upload logo if selected on step 1
+      if (step === 1 && logoFile) {
         try {
-          await apiRef.current.plants.importList(nurseryInputRef.current.files[0]);
+          await apiRef.current.files.upload(logoFile, 'logo');
+        } catch (e) { console.log('Logo upload:', e.message); }
+      }
+      // Import nursery list on step 4
+      if (step === 4 && nurseryFile) {
+        try {
+          const result = await apiRef.current.plants.importList(nurseryFile);
+          console.log('Nursery import result:', result);
         } catch (e) { console.log('Nursery import:', e.message); }
       }
       setStep(s => s + 1);
@@ -2315,10 +2990,10 @@ function OnboardingWizard({ onComplete }) {
         {step === 4 && (
           <div>
             <input type="file" ref={nurseryInputRef} accept=".pdf,.csv,.txt,.xlsx,.xls" style={{ display: 'none' }}
-              onChange={e => e.target.files?.[0] && setError(null)} />
-            <div className="upload-zone" style={{ cursor: 'pointer' }} onClick={() => nurseryInputRef.current?.click()}>
-              <div className="icon">📄</div>
-              <p>{nurseryInputRef.current?.files?.[0]?.name || "Upload nursery availability list"}<br/><span style={{ fontSize: 12 }}>PDF, Excel, CSV, or plain text</span></p>
+              onChange={e => { if (e.target.files?.[0]) { setNurseryFile(e.target.files[0]); setError(null); } }} />
+            <div className="upload-zone" style={{ cursor: 'pointer', borderColor: nurseryFile ? 'var(--filo-green)' : undefined }} onClick={() => nurseryInputRef.current?.click()}>
+              <div className="icon">{nurseryFile ? '✅' : '📄'}</div>
+              <p>{nurseryFile?.name || "Upload nursery availability list"}<br/><span style={{ fontSize: 12 }}>{nurseryFile ? `${(nurseryFile.size / 1024).toFixed(0)} KB — click Continue to import` : 'PDF, Excel, CSV, or plain text'}</span></p>
             </div>
             <p style={{ fontSize: 12, color: "var(--filo-grey)", marginTop: 12, textAlign: "center" }}>Skip this step to use FILO's default local plant database</p>
           </div>
@@ -2411,13 +3086,20 @@ function OnboardingWizard({ onComplete }) {
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════════
 export default function App() {
-  const [view, setView] = useState("loading"); // loading | login | register | onboarding | app
+  // Detect invite token in URL path: /invite/:token
+  const inviteToken = (() => {
+    const m = window.location.pathname.match(/^\/invite\/([a-f0-9-]{36})$/i);
+    return m ? m[1] : null;
+  })();
+
+  const [view, setView] = useState(inviteToken ? "invite" : "loading"); // loading | invite | login | register | onboarding | app
   const [user, setUser] = useState(null);
   const [page, setPage] = useState("dashboard");
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Check for existing session on mount
   useEffect(() => {
+    if (inviteToken) return; // Don't auto-redirect when accepting an invite
     const checkAuth = async () => {
       try {
         const mod = await import('./api.js');
@@ -2448,7 +3130,7 @@ export default function App() {
 
   const handleLogin = (userData) => {
     setUser(userData);
-    setView("app"); // Skip onboarding check for login (they already completed it)
+    setView(userData.onboardingCompleted === false ? "onboarding" : "app");
   };
 
   const handleRegister = (userData) => {
@@ -2468,7 +3150,7 @@ export default function App() {
   const pages = {
     dashboard: <DashboardPage setPage={setPage} />,
     projects: <ProjectsPage setPage={setPage} />,
-    "new-project": <NewProjectPage />,
+    "new-project": <ErrorBoundary><NewProjectPage /></ErrorBoundary>,
     clients: <ClientsPage />,
     plants: <PlantLibraryPage />,
     templates: <TemplatesPage />,
@@ -2489,6 +3171,13 @@ export default function App() {
           <p style={{ fontSize: 14, color: "var(--filo-grey)" }}>Loading FILO...</p>
         </div>
       </div>
+    </>
+  );
+
+  if (view === "invite") return (
+    <>
+      <style>{STYLES}</style>
+      <InviteAcceptPage inviteToken={inviteToken} onAccepted={handleLogin} />
     </>
   );
 
@@ -2518,7 +3207,7 @@ export default function App() {
       <style>{STYLES}</style>
       <AppContext.Provider value={{ user, setPage, handleLogout }}>
         <div className="app-layout">
-          <Sidebar page={page} setPage={setPage} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
+          <Sidebar page={page} setPage={setPage} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} user={user} />
           {mobileOpen && <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 45 }} onClick={() => setMobileOpen(false)} />}
           <div className={cn("main-content")}>
             <TopBar page={page} setMobileOpen={setMobileOpen} />
