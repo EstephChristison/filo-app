@@ -908,7 +908,7 @@ function NewProjectPage() {
             if (!design || designPlants.length === 0) {
               await api.projects.updateStatus(projectId, 'design_generation');
               try {
-                const designResult = await api.projects.generateDesign(projectId);
+                const designResult = await api.projects.generateDesign(projectId, { maxSpecies: project.maxSpecies || 3 });
                 const d = designResult.design || designResult;
                 setDesign(d);
                 const plants = designResult.plants || d?.plants || [];
@@ -1621,7 +1621,7 @@ function NewProjectPage() {
                             hardscape_changes: project.hardscape,
                           });
                           await api.projects.updateStatus(projectId, 'design_generation');
-                          const designResult = await api.projects.generateDesign(projectId);
+                          const designResult = await api.projects.generateDesign(projectId, { maxSpecies: project.maxSpecies || 3 });
                           const d = designResult.design || designResult;
                           setDesign(d);
                           const plants = designResult.plants || d?.plants || [];

@@ -309,8 +309,8 @@ export const projects = {
   },
 
   // AI Design Generation
-  async generateDesign(projectId) {
-    return apiFetch(`/projects/${projectId}/designs/generate`, { method: 'POST' });
+  async generateDesign(projectId, options = {}) {
+    return apiFetch(`/projects/${projectId}/designs/generate`, { method: 'POST', body: options });
   },
 
   // Estimates
