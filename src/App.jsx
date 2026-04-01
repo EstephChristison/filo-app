@@ -901,6 +901,7 @@ function NewProjectPage() {
               hardscape_changes: project.hardscape,
             });
             // Generate design if not already done
+            let finalPlants = designPlants;
             if (!design || designPlants.length === 0) {
               await api.projects.updateStatus(projectId, 'design_generation');
               try {
@@ -908,7 +909,7 @@ function NewProjectPage() {
                 const d = designResult.design || designResult;
                 setDesign(d);
                 const plants = designResult.plants || d?.plants || [];
-                let finalPlants = plants;
+                finalPlants = plants;
                 if (finalPlants.length === 0 && d?.design_data) {
                   try {
                     const dd = typeof d.design_data === 'string' ? JSON.parse(d.design_data) : d.design_data;
@@ -918,6 +919,59 @@ function NewProjectPage() {
                 setDesignPlants(finalPlants);
               } catch (e) {
                 console.log("Design generation error:", e.message);
+              }
+            }
+
+            // Auto-trigger AI visual render (gpt-image-1 inpainting) after plant palette is ready
+            if (finalPlants.length > 0 && !designRenderUrl) {
+              const photoUrls = Object.values(uploadedPhotos || {}).flat().map(p => p?.file?.cdn_url || p?.cdn_url).filter(Boolean);
+              if (photoUrls.length > 0) {
+                setGeneratingRender(true);
+                // Build mask from drawPaths if available
+                let maskDataUrl = null;
+                if (drawPaths && drawPaths.length > 0) {
+                  try {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 1024; canvas.height = 1024;
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, 1024, 1024);
+                    ctx.fillStyle = '#000000';
+                    ctx.strokeStyle = '#000000';
+                    ctx.lineWidth = 50;
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    for (const rawPath of drawPaths) {
+                      const path = Array.isArray(rawPath) ? rawPath : (rawPath?.points || []);
+                      if (path.length < 2) continue;
+                      ctx.beginPath();
+                      ctx.moveTo(path[0].x * 1.024, path[0].y * 1.024);
+                      for (let i = 1; i < path.length; i++) {
+                        ctx.lineTo(path[i].x * 1.024, path[i].y * 1.024);
+                      }
+                      ctx.closePath();
+                      ctx.fill();
+                      ctx.stroke();
+                    }
+                    maskDataUrl = canvas.toDataURL('image/png');
+                  } catch (e) { console.log('Mask generation failed:', e.message); }
+                }
+                // Fire render in background — don't block wizard advancement
+                api.designRender.generate(
+                  photoUrls[0],
+                  finalPlants,
+                  detectedPlants.filter(p => plantMarks[p.id] !== 'remove'),
+                  detectedPlants.filter(p => plantMarks[p.id] === 'remove'),
+                  project.style || 'naturalistic',
+                  design?.narrative || design?.design_notes || '',
+                  maskDataUrl
+                ).then(result => {
+                  setDesignRenderUrl(result.renderUrl);
+                }).catch(err => {
+                  console.error('Auto design render failed:', err.message);
+                }).finally(() => {
+                  setGeneratingRender(false);
+                });
               }
             }
           }
@@ -1561,6 +1615,25 @@ function NewProjectPage() {
                             } catch (e) {}
                           }
                           setDesignPlants(finalPlants);
+                          // Auto-trigger visual render after plant palette is ready
+                          if (finalPlants.length > 0) {
+                            const photoUrls = Object.values(uploadedPhotos || {}).flat().map(p => p?.file?.cdn_url || p?.cdn_url).filter(Boolean);
+                            if (photoUrls.length > 0) {
+                              setGeneratingRender(true);
+                              api.designRender.generate(
+                                photoUrls[0], finalPlants,
+                                detectedPlants.filter(p => plantMarks[p.id] !== 'remove'),
+                                detectedPlants.filter(p => plantMarks[p.id] === 'remove'),
+                                project.style || 'naturalistic',
+                                d?.narrative || d?.design_notes || '',
+                                null
+                              ).then(result => {
+                                setDesignRenderUrl(result.renderUrl);
+                              }).catch(err => {
+                                console.error('Auto design render failed:', err.message);
+                              }).finally(() => { setGeneratingRender(false); });
+                            }
+                          }
                         }
                       } catch (e) {
                         alert('Design generation failed: ' + e.message);
@@ -1647,7 +1720,17 @@ function NewProjectPage() {
                     )}
                   </div>
                   <div className="card-body">
-                    {designRenderUrl ? (
+                    {generatingRender ? (
+                      <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+                        <img src={photoUrls[0]} alt="Property" style={{ width: "100%", display: "block", filter: "brightness(0.7) blur(2px)" }} />
+                        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
+                          <div style={{ width: 48, height: 48, border: "4px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+                          <span style={{ color: "#fff", fontSize: 16, fontWeight: 700, textShadow: "0 2px 8px rgba(0,0,0,0.5)" }}>Rendering AI Design...</span>
+                          <span style={{ color: "rgba(255,255,255,0.8)", fontSize: 12, textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}>gpt-image-1 is painting {designPlants.length} plants onto your property</span>
+                        </div>
+                        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+                      </div>
+                    ) : designRenderUrl ? (
                       <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
                         <img src={designRenderUrl} alt="Final Design Render" style={{ width: "100%", display: "block", borderRadius: "var(--radius-md)" }} />
                         <div style={{ position: "absolute", top: 12, left: 12, background: "var(--filo-green)", color: "#fff", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
@@ -1663,30 +1746,14 @@ function NewProjectPage() {
                       </div>
                     ) : (
                       <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
-                        <img src={photoUrls[0]} alt="Property" style={{ width: "100%", display: "block", filter: "brightness(0.85) saturate(0.5)" }} />
-                        {/* Layer zone labels */}
-                        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "55%", display: "flex", flexDirection: "column" }}>
-                          {allGrouped && backPlants.length > 0 && (
-                            <div style={{ flex: 1, background: "rgba(46,125,50,0.2)", borderTop: "2px dashed rgba(46,125,50,0.5)", display: "flex", alignItems: "center", paddingLeft: 12 }}>
-                              <span style={{ background: "rgba(46,125,50,0.85)", color: "#fff", fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4 }}>BACK — {backPlants.map(p => `${p.common_name || p.plant_name} ×${p.quantity || 1}`).join(', ')}</span>
-                            </div>
-                          )}
-                          {allGrouped && middlePlants.length > 0 && (
-                            <div style={{ flex: 1, background: "rgba(102,187,106,0.2)", borderTop: "2px dashed rgba(102,187,106,0.5)", display: "flex", alignItems: "center", paddingLeft: 12 }}>
-                              <span style={{ background: "rgba(102,187,106,0.85)", color: "#fff", fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4 }}>MIDDLE — {middlePlants.map(p => `${p.common_name || p.plant_name} ×${p.quantity || 1}`).join(', ')}</span>
-                            </div>
-                          )}
-                          {allGrouped && frontPlants.length > 0 && (
-                            <div style={{ flex: 1, background: "rgba(165,214,167,0.25)", borderTop: "2px dashed rgba(165,214,167,0.6)", display: "flex", alignItems: "center", paddingLeft: 12 }}>
-                              <span style={{ background: "rgba(165,214,167,0.9)", color: "#1a1a2e", fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4 }}>FRONT — {frontPlants.map(p => `${p.common_name || p.plant_name} ×${p.quantity || 1}`).join(', ')}</span>
-                            </div>
-                          )}
-                        </div>
-                        <div style={{ position: "absolute", top: 12, right: 12, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "4px 10px", borderRadius: 4, fontSize: 10, fontWeight: 700 }}>FILO Design</div>
-                        <div style={{ position: "absolute", bottom: 12, left: 12, right: 12, textAlign: "center" }}>
-                          <span style={{ background: "rgba(0,0,0,0.7)", color: "#fff", padding: "6px 16px", borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
-                            Click "Generate Design Render" to see AI visualization of finished landscape
-                          </span>
+                        <img src={photoUrls[0]} alt="Property" style={{ width: "100%", display: "block", filter: "brightness(0.7) saturate(0.4)" }} />
+                        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12 }}>
+                          <span style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}>AI render not yet generated</span>
+                          <button className="btn btn-primary" onClick={generateFinalDesign} disabled={generatingRender}
+                            style={{ fontWeight: 700, padding: "12px 32px", fontSize: 15, boxShadow: "0 4px 16px rgba(0,0,0,0.3)" }}>
+                            ✨ Generate AI Design Render
+                          </button>
+                          <span style={{ color: "rgba(255,255,255,0.6)", fontSize: 11, textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}>Uses gpt-image-1 to paint {designPlants.length} plants onto your property photo</span>
                         </div>
                       </div>
                     )}
@@ -2543,7 +2610,7 @@ function TemplatesPage() {
 }
 
 // ─── Login Page ──────────────────────────────────────────────────
-function LoginPage({ onLogin, onShowRegister }) {
+function LoginPage({ onLogin, onShowRegister, onShowForgotPassword, onShowForgotEmail }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -2593,12 +2660,217 @@ function LoginPage({ onLogin, onShowRegister }) {
             <input className="form-input" type="password" placeholder="••••••••" value={password}
               onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} />
           </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, marginTop: -4 }}>
+            <span style={{ fontSize: 12, color: "var(--filo-green)", cursor: "pointer" }} onClick={onShowForgotPassword}>Forgot password?</span>
+            <span style={{ fontSize: 12, color: "var(--filo-green)", cursor: "pointer" }} onClick={onShowForgotEmail}>Forgot email?</span>
+          </div>
           <button className="btn btn-primary btn-lg" style={{ width: "100%", marginBottom: 16, opacity: loading ? 0.6 : 1 }}
             onClick={handleLogin} disabled={loading}>
             {loading ? "Signing in..." : "Sign In"}
           </button>
           <p style={{ fontSize: 13, color: "var(--filo-grey)", textAlign: "center" }}>
             New to FILO? <span style={{ color: "var(--filo-green)", cursor: "pointer", fontWeight: 500 }} onClick={onShowRegister}>Start your free trial →</span>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Forgot Password Page ────────────────────────────────────────
+function ForgotPasswordPage({ onShowLogin }) {
+  const [step, setStep] = useState("request"); // request | reset | done
+  const [email, setEmail] = useState("");
+  const [token, setToken] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // Check URL for reset token
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const t = params.get('reset_token');
+    if (t) { setToken(t); setStep("reset"); }
+  }, []);
+
+  const handleRequest = async () => {
+    if (!email) { setError("Enter your email address"); return; }
+    setLoading(true); setError("");
+    try {
+      const mod = await import('./api.js');
+      const result = await mod.auth.forgotPassword(email);
+      setMessage(result.message);
+      setStep("reset");
+    } catch (err) {
+      setError(err.message || "Failed to send reset request");
+    } finally { setLoading(false); }
+  };
+
+  const handleReset = async () => {
+    if (!token) { setError("Enter the reset code from your email"); return; }
+    if (!password || password.length < 8) { setError("Password must be at least 8 characters"); return; }
+    if (password !== confirm) { setError("Passwords don't match"); return; }
+    setLoading(true); setError("");
+    try {
+      const mod = await import('./api.js');
+      const result = await mod.auth.resetPassword(token, password);
+      setMessage(result.message);
+      setStep("done");
+    } catch (err) {
+      setError(err.message || "Reset failed. Token may be expired.");
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="login-page">
+      <div className="login-left">
+        <div style={{ maxWidth: 480, textAlign: "center" }}>
+          <div style={{ fontSize: 64, marginBottom: 16 }}>🔑</div>
+          <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, marginBottom: 16 }}>Reset Password</h1>
+          <p style={{ fontSize: 15, opacity: 0.7 }}>We'll help you get back into your account.</p>
+        </div>
+      </div>
+      <div className="login-right">
+        <div className="login-card">
+          {step === "request" && <>
+            <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, marginBottom: 4 }}>Forgot your password?</h2>
+            <p style={{ fontSize: 14, color: "var(--filo-grey)", marginBottom: 24 }}>Enter your email and we'll send a reset code.</p>
+            {error && <div style={{ background: "#FEE2E2", color: "#DC2626", padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 16 }}>{error}</div>}
+            <div className="form-group">
+              <label className="form-label">Email</label>
+              <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleRequest()} placeholder="you@company.com" />
+            </div>
+            <button className="btn btn-primary btn-lg" style={{ width: "100%", marginBottom: 16, opacity: loading ? 0.6 : 1 }}
+              onClick={handleRequest} disabled={loading}>
+              {loading ? "Sending..." : "Send Reset Code"}
+            </button>
+          </>}
+
+          {step === "reset" && <>
+            <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, marginBottom: 4 }}>Enter reset code</h2>
+            <p style={{ fontSize: 14, color: "var(--filo-grey)", marginBottom: 8 }}>
+              {message || "Check your email for a reset code."}
+            </p>
+            <p style={{ fontSize: 12, color: "var(--filo-green)", background: "#F0FDF4", padding: "8px 12px", borderRadius: 8, marginBottom: 20 }}>
+              Note: While email sending is being configured, check with your administrator for the reset code.
+            </p>
+            {error && <div style={{ background: "#FEE2E2", color: "#DC2626", padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 16 }}>{error}</div>}
+            <div className="form-group">
+              <label className="form-label">Reset Code</label>
+              <input className="form-input" type="text" value={token} onChange={e => setToken(e.target.value)}
+                placeholder="Paste reset code here" style={{ fontFamily: "monospace", fontSize: 13 }} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">New Password</label>
+              <input className="form-input" type="password" value={password} onChange={e => setPassword(e.target.value)}
+                placeholder="Min 8 characters" />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Confirm Password</label>
+              <input className="form-input" type="password" value={confirm} onChange={e => setConfirm(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleReset()} placeholder="Confirm new password" />
+            </div>
+            <button className="btn btn-primary btn-lg" style={{ width: "100%", marginBottom: 16, opacity: loading ? 0.6 : 1 }}
+              onClick={handleReset} disabled={loading}>
+              {loading ? "Resetting..." : "Reset Password"}
+            </button>
+          </>}
+
+          {step === "done" && <>
+            <div style={{ textAlign: "center", padding: "20px 0" }}>
+              <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
+              <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, marginBottom: 8 }}>Password Reset!</h2>
+              <p style={{ fontSize: 14, color: "var(--filo-grey)", marginBottom: 24 }}>{message}</p>
+              <button className="btn btn-primary btn-lg" style={{ width: "100%" }} onClick={onShowLogin}>
+                Back to Sign In
+              </button>
+            </div>
+          </>}
+
+          {step !== "done" && (
+            <p style={{ fontSize: 13, color: "var(--filo-grey)", textAlign: "center", marginTop: 8 }}>
+              Remember your password? <span style={{ color: "var(--filo-green)", cursor: "pointer", fontWeight: 500 }} onClick={onShowLogin}>Sign in →</span>
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Forgot Email Page ───────────────────────────────────────────
+function ForgotEmailPage({ onShowLogin }) {
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [results, setResults] = useState(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleLookup = async () => {
+    if (!firstName && !lastName && !phone) { setError("Enter at least your name or phone number"); return; }
+    setLoading(true); setError(""); setResults(null);
+    try {
+      const mod = await import('./api.js');
+      const result = await mod.auth.forgotEmail({ firstName, lastName, phone });
+      setResults(result);
+    } catch (err) {
+      setError(err.message || "Lookup failed");
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="login-page">
+      <div className="login-left">
+        <div style={{ maxWidth: 480, textAlign: "center" }}>
+          <div style={{ fontSize: 64, marginBottom: 16 }}>📧</div>
+          <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, marginBottom: 16 }}>Find Your Email</h1>
+          <p style={{ fontSize: 15, opacity: 0.7 }}>Look up which email you signed up with.</p>
+        </div>
+      </div>
+      <div className="login-right">
+        <div className="login-card">
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, marginBottom: 4 }}>Forgot your email?</h2>
+          <p style={{ fontSize: 14, color: "var(--filo-grey)", marginBottom: 24 }}>Enter your name or phone number to find your account.</p>
+          {error && <div style={{ background: "#FEE2E2", color: "#DC2626", padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 16 }}>{error}</div>}
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="form-group">
+              <label className="form-label">First Name</label>
+              <input className="form-input" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Esteph" />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Last Name</label>
+              <input className="form-input" value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Christison" />
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Phone Number</label>
+            <input className="form-input" type="tel" value={phone} onChange={e => setPhone(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleLookup()} placeholder="832-741-7781" />
+          </div>
+
+          <button className="btn btn-primary btn-lg" style={{ width: "100%", marginBottom: 16, opacity: loading ? 0.6 : 1 }}
+            onClick={handleLookup} disabled={loading}>
+            {loading ? "Searching..." : "Find My Account"}
+          </button>
+
+          {results && (
+            <div style={{ background: results.maskedEmails.length ? "#F0FDF4" : "#FEF3C7", padding: "14px 16px", borderRadius: 10, marginBottom: 16 }}>
+              <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: results.maskedEmails.length ? "#166534" : "#92400E" }}>
+                {results.message}
+              </p>
+              {results.maskedEmails.map((e, i) => (
+                <div key={i} style={{ fontSize: 15, fontFamily: "monospace", padding: "6px 0", color: "#1F2937" }}>{e}</div>
+              ))}
+            </div>
+          )}
+
+          <p style={{ fontSize: 13, color: "var(--filo-grey)", textAlign: "center" }}>
+            Remember your email? <span style={{ color: "var(--filo-green)", cursor: "pointer", fontWeight: 500 }} onClick={onShowLogin}>Sign in →</span>
           </p>
         </div>
       </div>
@@ -3092,7 +3364,7 @@ export default function App() {
     return m ? m[1] : null;
   })();
 
-  const [view, setView] = useState(inviteToken ? "invite" : "loading"); // loading | invite | login | register | onboarding | app
+  const [view, setView] = useState(inviteToken ? "invite" : "loading"); // loading | invite | login | register | forgot-password | forgot-email | onboarding | app
   const [user, setUser] = useState(null);
   const [page, setPage] = useState("dashboard");
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -3184,7 +3456,21 @@ export default function App() {
   if (view === "login") return (
     <>
       <style>{STYLES}</style>
-      <LoginPage onLogin={handleLogin} onShowRegister={() => setView("register")} />
+      <LoginPage onLogin={handleLogin} onShowRegister={() => setView("register")} onShowForgotPassword={() => setView("forgot-password")} onShowForgotEmail={() => setView("forgot-email")} />
+    </>
+  );
+
+  if (view === "forgot-password") return (
+    <>
+      <style>{STYLES}</style>
+      <ForgotPasswordPage onShowLogin={() => setView("login")} />
+    </>
+  );
+
+  if (view === "forgot-email") return (
+    <>
+      <style>{STYLES}</style>
+      <ForgotEmailPage onShowLogin={() => setView("login")} />
     </>
   );
 
