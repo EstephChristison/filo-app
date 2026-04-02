@@ -754,7 +754,9 @@ function NewProjectPage() {
   const [bedPrepSubStep, setBedPrepSubStep] = useState('removal'); // 'removal' | 'bedEdge'
   const [bedEdgePath, setBedEdgePath] = useState([]);
   const [bedEdgeDrawing, setBedEdgeDrawing] = useState(false);
+  const bedEdgeDrawingRef = useRef(false);
   const [bedEdgeCurrentPath, setBedEdgeCurrentPath] = useState([]);
+  const bedEdgeCurrentPathRef = useRef([]);
   const [bedEdgeStyle, setBedEdgeStyle] = useState('rounded'); // 'square' | 'rounded'
   const [bedEdgeAdjustment, setBedEdgeAdjustment] = useState(0); // -10 to +10 feet
   const [bedEdgePreview, setBedEdgePreview] = useState(null);
@@ -1365,19 +1367,25 @@ function NewProjectPage() {
             if (e.type === 'touchstart') e.preventDefault();
             const pt = getBedEdgePoint(e);
             if (!pt) return;
+            bedEdgeDrawingRef.current = true;
             setBedEdgeDrawing(true);
+            bedEdgeCurrentPathRef.current = [pt];
             setBedEdgeCurrentPath([pt]);
           };
           const moveBedEdgeDraw = (e) => {
-            if (!bedEdgeDrawing) return;
+            if (!bedEdgeDrawingRef.current) return;
             if (e.type === 'touchmove') e.preventDefault();
             const pt = getBedEdgePoint(e);
             if (!pt) return;
-            setBedEdgeCurrentPath(prev => [...prev, pt]);
+            bedEdgeCurrentPathRef.current = [...bedEdgeCurrentPathRef.current, pt];
+            setBedEdgeCurrentPath(bedEdgeCurrentPathRef.current);
           };
           const endBedEdgeDraw = () => {
-            if (bedEdgeCurrentPath.length > 3) setBedEdgePath(bedEdgeCurrentPath);
+            const finalPath = bedEdgeCurrentPathRef.current;
+            if (finalPath.length > 3) setBedEdgePath(finalPath);
+            bedEdgeDrawingRef.current = false;
             setBedEdgeDrawing(false);
+            bedEdgeCurrentPathRef.current = [];
             setBedEdgeCurrentPath([]);
           };
           const getBedEdgeMaskDataUrl = () => {
@@ -1402,11 +1410,18 @@ function NewProjectPage() {
             setGeneratingBedEdge(true);
             try {
               const maskDataUrl = getBedEdgeMaskDataUrl();
-              const basePhoto = removalPreview || photoUrls[0];
+              // Use localStorage for removal preview (immune to stale closures)
+              const lsRemoval = (() => { try { return localStorage.getItem('filo_removal_preview'); } catch(e) { return null; } })();
+              const basePhoto = lsRemoval || removalPreview || photoUrls[0];
+              console.log('[bed-edge-gen] Base photo source:', lsRemoval ? 'REMOVAL PREVIEW (localStorage)' : removalPreview ? 'REMOVAL PREVIEW (state)' : 'ORIGINAL PHOTO');
+              if (!basePhoto) { alert('No photo available — upload a photo first'); setGeneratingBedEdge(false); return; }
+              console.log('[bed-edge-gen] Calling API with mask:', !!maskDataUrl, 'style:', bedEdgeStyle);
               const result = await api.bedEdgePreview.generate(basePhoto, maskDataUrl, bedEdgeStyle, bedEdgeAdjustment);
+              console.log('[bed-edge-gen] API returned, previewUrl length:', result?.previewUrl?.length || 0);
+              if (!result?.previewUrl) throw new Error('No preview image returned from server');
               setBedEdgePreview(result.previewUrl);
               bedEdgePreviewRef.current = result.previewUrl;
-              try { localStorage.setItem('filo_bed_edge_preview', result.previewUrl); } catch (e) {}
+              try { localStorage.setItem('filo_bed_edge_preview', result.previewUrl); } catch (e) { console.warn('[bed-edge-gen] localStorage save failed:', e.message); }
             } catch (err) {
               console.error('Bed edge generation failed:', err.message);
               alert('Bed edge generation failed: ' + err.message);
