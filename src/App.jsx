@@ -39,10 +39,10 @@ const STATUS_MAP = {
   design_questionnaire: { label: "Questionnaire", color: "#8B5CF6", step: 3 },
   design_generation: { label: "Designing", color: "#3B82F6", step: 4 },
   design_review: { label: "Review", color: "#EC4899", step: 5 },
-  estimate_pending: { label: "Estimate", color: "#F97316", step: 6 },
-  estimate_approved: { label: "Approved", color: "#10B981", step: 7 },
-  submittal_sent: { label: "Submitted", color: "#06B6D4", step: 8 },
-  completed: { label: "Complete", color: "#059669", step: 9 },
+  estimate_pending: { label: "Estimate", color: "#F97316", step: 5 },
+  estimate_approved: { label: "Approved", color: "#10B981", step: 6 },
+  submittal_sent: { label: "Submitted", color: "#06B6D4", step: 7 },
+  completed: { label: "Complete", color: "#059669", step: 8 },
 };
 
 const CRM_OPTIONS = ["Jobber", "ServiceTitan", "LMN", "Aspire", "SingleOps", "Housecall Pro", "Arborgold", "Service Autopilot", "Yardbook"];
@@ -798,8 +798,8 @@ function NewProjectPage() {
     try { localStorage.setItem('filo_wizard_checkpoint', JSON.stringify(checkpoint)); } catch (e) { /* quota */ }
   }, [step, project, clientId, projectId, areaMap, uploadedPhotos, detectedPlants, plantMarks, removalCost, design, designPlants, chatMessages, estimate, estimateApproved, submittal, exportData]);
 
-  const totalSteps = 9;
-  const stepTitles = ["Client Info", "Property Areas", "Photo Upload", "Bed Preparation", "AI Design", "Review & Adjust", "Estimate", "Submittal", "CRM Push"];
+  const totalSteps = 8;
+  const stepTitles = ["Client Info", "Property Areas", "Photo Upload", "Bed Preparation", "AI Design", "Estimate", "Submittal", "CRM Push"];
 
   const updateProject = (updates) => setProject(p => ({ ...p, ...updates }));
 
@@ -999,23 +999,13 @@ function NewProjectPage() {
           break;
         }
         case 8: {
-          // CRM Push step — export data
+          // CRM Push + Final completion
           if (projectId) {
             await api.projects.updateStatus(projectId, 'completed');
             try {
               const exp = await api.projects.exportAll(projectId);
               setExportData(exp);
             } catch (e) { console.log("Export error:", e.message); }
-          }
-          setStep(9);
-          break;
-        }
-        case 9: {
-          // Final completion — mark project as completed
-          if (projectId) {
-            try {
-              await api.projects.updateStatus(projectId, 'completed');
-            } catch (e) { console.log("Completion error:", e.message); }
           }
           localStorage.removeItem('filo_wizard_checkpoint');
           setPage('projects');
@@ -1103,10 +1093,9 @@ function NewProjectPage() {
       case 3: { const totalPhotos = Object.values(selectedFiles).reduce((sum, f) => sum + (f?.length || 0), 0); return totalPhotos > 0 ? `Upload ${totalPhotos} Photo${totalPhotos > 1 ? 's' : ''} →` : "Skip Photos →"; }
       case 4: return "Save & Continue →";
       case 5: return "Generate AI Design →";
-      case 6: return "Review Design →";
-      case 7: return "Generate Estimate →";
-      case 8: return "Approve & Create Submittal →";
-      case 9: return "Complete Project →";
+      case 6: return "Generate Estimate →";
+      case 7: return "Approve & Create Submittal →";
+      case 8: return "Complete Project →";
       default: return "Continue →";
     }
   };
@@ -2122,97 +2111,8 @@ function NewProjectPage() {
           );
         })()}
 
-        {/* Step 6: Review & Adjust — REAL chat */}
+        {/* Step 6: Estimate — REAL data */}
         {step === 6 && (
-          <div className="scale-in" style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 24 }}>
-            <div>
-              <div className="card" style={{ marginBottom: 24 }}>
-                <div className="card-header">
-                  <h3 style={{ fontFamily: "var(--font-display)" }}>Design Canvas</h3>
-                </div>
-                <div className="card-body">
-                  <div style={{ position: "relative", width: "100%", paddingBottom: "65%", background: "linear-gradient(180deg, #e8f5e9 0%, #c8e6c9 40%, #a5d6a7 100%)", borderRadius: "var(--radius-md)", overflow: "hidden", border: "1px solid var(--filo-border)" }}>
-                    {[20,40,60,80].map(v => <div key={`v${v}`} style={{ position:"absolute", left:`${v}%`, top:0, bottom:0, width:1, background:"rgba(255,255,255,0.25)" }} />)}
-                    {[25,50,75].map(h => <div key={`h${h}`} style={{ position:"absolute", top:`${h}%`, left:0, right:0, height:1, background:"rgba(255,255,255,0.25)" }} />)}
-                    <div style={{ position:"absolute", top:"2%", left:"20%", width:"60%", height:"16%", background:"rgba(120,100,80,0.15)", borderRadius:"0 0 6px 6px", borderTop:"3px solid rgba(120,100,80,0.3)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                      <span style={{ fontSize:11, color:"rgba(0,0,0,0.25)", fontWeight:600 }}>HOUSE</span>
-                    </div>
-                    {(designPlants.length > 0 ? designPlants : []).map((plant, i) => {
-                      const px = parseFloat(plant.position_x) || (10 + (i * 80 / Math.max(designPlants.length - 1, 1)));
-                      const py = parseFloat(plant.position_y) || (25 + (i % 3) * 25);
-                      const isTree = (plant.notes || plant.common_name || '').toLowerCase().match(/tree|oak|maple|elm|pine|cedar/);
-                      const size = isTree ? 34 : 24;
-                      return (
-                        <div key={plant.id || i} title={`${plant.common_name || plant.plant_name} × ${plant.quantity || 1}`}
-                          style={{
-                            position: "absolute", left: `${px}%`, top: `${py}%`, transform: "translate(-50%, -50%)",
-                            width: size, height: size, borderRadius: "50%",
-                            background: isTree ? "rgba(46,125,50,0.85)" : "rgba(76,175,80,0.8)",
-                            border: "2px solid rgba(255,255,255,0.9)", boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            color: "#fff", fontSize: 9, fontWeight: 700, cursor: "pointer",
-                            transition: "transform 0.15s ease",
-                          }}
-                          onMouseEnter={e => e.currentTarget.style.transform = "translate(-50%, -50%) scale(1.3)"}
-                          onMouseLeave={e => e.currentTarget.style.transform = "translate(-50%, -50%) scale(1)"}>
-                          {i + 1}
-                        </div>
-                      );
-                    })}
-                    <div style={{ position:"absolute", bottom:8, right:8, background:"rgba(255,255,255,0.9)", padding:"5px 10px", borderRadius:6, fontSize:10, color:"var(--filo-grey)" }}>
-                      {designPlants.reduce((s, p) => s + (p.quantity || 1), 0)} plants · Click to adjust
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="card">
-                <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Plant List</h3></div>
-                <div className="card-body">
-                  <div className="plant-grid">
-                    {(designPlants.length > 0 ? designPlants : PLANTS_DB).slice(0, 6).map((p, i) => (
-                      <div key={p.id || i} className="plant-card">
-                        <div className="plant-icon">{p.img || "🌿"}</div>
-                        <div className="plant-name">{p.common_name || p.name}</div>
-                        <div className="plant-meta">{p.size || p.container_size || '3-gal'} • {p.sun_requirement || p.sun || 'full'} sun</div>
-                        {(p.price || p.unit_cost) && <div className="plant-price">{fmt(p.price || p.unit_cost)}</div>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <div className="chat-panel" style={{ height: 500 }}>
-                <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--filo-light)", fontWeight: 600, fontSize: 14 }}>
-                  AI Design Assistant
-                </div>
-                <div className="chat-messages">
-                  {chatMessages.map((msg, i) => (
-                    <div key={i} className={`chat-msg ${msg.role === 'user' ? 'user' : 'ai'}`}>
-                      {msg.text}
-                    </div>
-                  ))}
-                  {chatMessages.length === 0 && (
-                    <div className="chat-msg ai">
-                      Your design is ready for review. Tell me what changes you'd like — try "swap all shrubs for native species" or "add more color."
-                    </div>
-                  )}
-                </div>
-                <div className="chat-input-bar">
-                  <input className="form-input" placeholder="Type a design change..." style={{ flex: 1 }}
-                    value={chatInput} onChange={e => setChatInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleChatSend()} />
-                  <button className="btn btn-primary btn-sm" onClick={handleChatSend}>Send</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Step 7: Estimate — REAL data */}
-        {step === 7 && (
           <div className="scale-in" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
             <div className="card">
               <div className="card-header">
@@ -2282,8 +2182,8 @@ function NewProjectPage() {
           </div>
         )}
 
-        {/* Step 8: Submittal — REAL data */}
-        {step === 8 && (
+        {/* Step 7: Submittal — REAL data */}
+        {step === 7 && (
           <div className="scale-in">
             <div className="submittal-preview">
               <div className="submittal-cover">
@@ -2335,8 +2235,8 @@ function NewProjectPage() {
           </div>
         )}
 
-        {/* Step 9: Complete */}
-        {step === 9 && (
+        {/* Step 8: CRM Push / Complete */}
+        {step === 8 && (
           <div className="card scale-in" style={{ maxWidth: 600, margin: "0 auto" }}>
             <div className="card-body" style={{ textAlign: "center", padding: 60 }}>
               <div style={{ fontSize: 64, marginBottom: 16 }}>✅</div>
