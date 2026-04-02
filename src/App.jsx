@@ -2009,6 +2009,7 @@ function NewProjectPage() {
                         </div>
                         <div style={{ position: "absolute", top: 12, right: 12, background: adjustPin ? "rgba(59,130,246,0.85)" : "rgba(0,0,0,0.6)", color: "#fff", padding: "4px 10px", borderRadius: 4, fontSize: 10, fontWeight: 700 }}>
                           {adjustPin ? 'PIN PLACED — Describe change below' : 'TAP IMAGE TO ADJUST'}
+                        </div>
                         <button className="btn btn-sm btn-ghost" onClick={() => { setDesignRenderUrl(null); setAdjustPin(null); }}
                           style={{ position: "absolute", bottom: 12, left: 12, background: "rgba(0,0,0,0.7)", color: "#fff", border: "none", fontSize: 11 }}>← Redo</button>
                         <button className="btn btn-sm btn-ghost" onClick={generateFinalDesign} disabled={generatingRender}
