@@ -959,9 +959,11 @@ function NewProjectPage() {
                   design?.narrative || design?.design_notes || '',
                   null
                 ).then(result => {
+                  console.log('[auto-render] Success, renderUrl length:', result?.renderUrl?.length || 0);
                   setDesignRenderUrl(result.renderUrl);
                 }).catch(err => {
                   console.error('Auto design render failed:', err.message);
+                  setError('Design render failed: ' + err.message + ' — you can retry from the button below.');
                 }).finally(() => {
                   setGeneratingRender(false);
                 });
@@ -1932,12 +1934,10 @@ function NewProjectPage() {
                 <div className="card" style={{ marginBottom: 24 }}>
                   <div className="card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Final Design Installed</h3>
-                    {!designRenderUrl && (
-                      <button className="btn btn-primary btn-sm" onClick={generateFinalDesign} disabled={generatingRender}
-                        style={{ fontWeight: 600 }}>
-                        {generatingRender ? '⟳ Rendering Design...' : '✨ Generate Design Render'}
-                      </button>
-                    )}
+                    <button className="btn btn-primary btn-sm" onClick={generateFinalDesign} disabled={generatingRender}
+                      style={{ fontWeight: 600 }}>
+                      {generatingRender ? '⟳ Rendering Design...' : designRenderUrl ? '⟳ Regenerate Render' : '✨ Generate Design Render'}
+                    </button>
                   </div>
                   <div className="card-body">
                     {generatingRender ? (
