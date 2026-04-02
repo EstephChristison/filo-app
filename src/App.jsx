@@ -1749,7 +1749,7 @@ function NewProjectPage() {
                   <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label" style={{ fontSize: 12 }}>Design Style</label>
                     <div className="pill-group">
-                      {["Formal", "Naturalistic", "Modern", "Tropical", "Xeriscape"].map(opt => (
+                      {["Formal", "Naturalistic", "Modern", "Tropical", "Xeriscape", "Mediterranean", "Cottage", "Desert", "Farmhouse", "Transitional"].map(opt => (
                         <span key={opt} className={cn("pill", project.style === opt && "active")}
                           onClick={() => updateProject({ style: opt })} style={{ fontSize: 12, padding: "4px 10px" }}>{opt}</span>
                       ))}
@@ -3432,7 +3432,7 @@ function OnboardingWizard({ onComplete }) {
             <div className="form-group">
               <label className="form-label">Default Design Style</label>
               <div className="pill-group">
-                {["Formal", "Naturalistic", "Modern", "Tropical", "Xeriscape"].map(s => (
+                {["Formal", "Naturalistic", "Modern", "Tropical", "Xeriscape", "Mediterranean", "Cottage", "Desert", "Farmhouse", "Transitional"].map(s => (
                   <span key={s} className={cn("pill", co.design_style === s && "active")} onClick={() => update('design_style', s)}>{s}</span>
                 ))}
               </div>
