@@ -486,7 +486,7 @@ function Sidebar({ page, setPage, mobileOpen, setMobileOpen, user }) {
   const { handleLogout } = useApp();
   const navItems = [
     { section: "Core", items: [
-      { id: "projects", icon: "📁", label: "Projects", badge: MOCK_PROJECTS.length },
+      { id: "projects", icon: "📁", label: "Projects" },
       { id: "new-project", icon: "✨", label: "New Project" },
       { id: "clients", icon: "👥", label: "Clients" },
     ]},
