@@ -776,6 +776,8 @@ function NewProjectPage() {
   const [hardscapeCurrentPath, setHardscapeCurrentPath] = useState([]);
   const hardscapeDrawingRef = useRef(false);
   const hardscapeCurrentPathRef = useRef([]);
+  const [hardscapePrompt, setHardscapePrompt] = useState('');
+  const [applyingHardscape, setApplyingHardscape] = useState(false);
   const [savedPromptsList, setSavedPromptsList] = useState([]);
   const [showSavePromptForm, setShowSavePromptForm] = useState(false);
   const [newPromptName, setNewPromptName] = useState('');
@@ -2241,46 +2243,44 @@ function NewProjectPage() {
                       {hardscapePaths.length > 0 && (
                         <div style={{ marginTop: 12 }}>
                           <textarea className="form-input" placeholder="Describe the hardscape... e.g. 'Flagstone walkway', 'Decomposed granite', 'Stone border edging', 'Brick pavers'"
-                            id="hardscapePromptInput"
+                            value={hardscapePrompt} onChange={e => setHardscapePrompt(e.target.value)}
                             style={{ minHeight: 60, fontSize: 13, marginBottom: 12 }} />
-                          <button className="btn btn-primary" style={{ width: "100%", fontWeight: 700, padding: "12px 24px" }}
+                          <button className="btn btn-primary" disabled={!hardscapePrompt.trim() || applyingHardscape}
+                            style={{ width: "100%", fontWeight: 700, padding: "12px 24px" }}
                             onClick={async () => {
-                              const promptEl = document.getElementById('hardscapePromptInput');
-                              const hPrompt = promptEl?.value?.trim();
-                              if (!hPrompt) { alert('Describe the hardscape change first'); return; }
-                              // Build mask from hardscapePaths
-                              const canvas = document.createElement('canvas');
-                              canvas.width = 1024; canvas.height = 1024;
-                              const ctx = canvas.getContext('2d');
-                              ctx.fillStyle = '#ffffff';
-                              ctx.fillRect(0, 0, 1024, 1024);
-                              ctx.fillStyle = '#000000';
-                              for (const path of hardscapePaths) {
-                                ctx.beginPath();
-                                ctx.moveTo(path[0].x * 1.024, path[0].y * 1.024);
-                                for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x * 1.024, path[i].y * 1.024);
-                                ctx.closePath();
-                                ctx.fill();
-                              }
-                              const maskDataUrl = canvas.toDataURL('image/png');
-                              const btn = document.activeElement;
-                              if (btn) btn.disabled = true;
-                              if (btn) btn.textContent = '⟳ Applying Hardscape...';
+                              if (!hardscapePrompt.trim()) return;
+                              setApplyingHardscape(true);
                               try {
+                                const canvas = document.createElement('canvas');
+                                canvas.width = 1024; canvas.height = 1024;
+                                const ctx = canvas.getContext('2d');
+                                ctx.fillStyle = '#ffffff';
+                                ctx.fillRect(0, 0, 1024, 1024);
+                                ctx.fillStyle = '#000000';
+                                for (const path of hardscapePaths) {
+                                  ctx.beginPath();
+                                  ctx.moveTo(path[0].x * 1.024, path[0].y * 1.024);
+                                  for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x * 1.024, path[i].y * 1.024);
+                                  ctx.closePath();
+                                  ctx.fill();
+                                }
+                                const maskDataUrl = canvas.toDataURL('image/png');
                                 const api = apiRef.current;
-                                const result = await api.hardscape.apply(designRenderUrl, maskDataUrl, hPrompt);
-                                setDesignRenderUrl(result.renderUrl);
-                                setHardscapePaths([]);
-                                setHardscapeDrawing(false);
-                                if (promptEl) promptEl.value = '';
+                                const result = await api.hardscape.apply(designRenderUrl, maskDataUrl, hardscapePrompt.trim());
+                                if (result?.renderUrl) {
+                                  setDesignRenderUrl(result.renderUrl);
+                                  setHardscapePaths([]);
+                                  setHardscapeDrawing(false);
+                                  setHardscapePrompt('');
+                                } else {
+                                  throw new Error('No render returned');
+                                }
                               } catch (err) {
                                 console.error('Hardscape failed:', err.message);
                                 alert('Hardscape edit failed: ' + err.message);
-                              } finally {
-                                if (btn) { btn.disabled = false; btn.textContent = '✨ Apply Hardscape'; }
-                              }
+                              } finally { setApplyingHardscape(false); }
                             }}>
-                            ✨ Apply Hardscape
+                            {applyingHardscape ? '⟳ Applying Hardscape...' : '✨ Apply Hardscape'}
                           </button>
                         </div>
                       )}
