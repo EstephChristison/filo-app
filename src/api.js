@@ -78,7 +78,7 @@ async function apiFetch(path, options = {}) {
   try {
     // 3 minute timeout for AI image endpoints (Gemini can be slow)
     const controller = new AbortController();
-    const timeoutMs = path.includes('removal-preview') || path.includes('design-render') || path.includes('generate-design') || path.includes('design-adjust') ? 180000 : 30000;
+    const timeoutMs = path.includes('removal-preview') || path.includes('bed-edge-preview') || path.includes('design-render') || path.includes('generate-design') || path.includes('design-adjust') ? 180000 : 30000;
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     response = await fetch(url, {
       ...options,
@@ -397,6 +397,19 @@ export const removalPreview = {
 };
 
 // ═══════════════════════════════════════════════════════════════════
+// BED EDGE PREVIEW
+// ═══════════════════════════════════════════════════════════════════
+
+export const bedEdgePreview = {
+  async generate(photoUrl, maskDataUrl, edgeStyle, adjustmentFeet) {
+    return apiFetch('/bed-edge-preview', {
+      method: 'POST',
+      body: { photoUrl, maskDataUrl, edgeStyle, adjustmentFeet },
+    });
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════
 // DESIGN RENDER (Final installed look)
 // ═══════════════════════════════════════════════════════════════════
 
@@ -650,6 +663,7 @@ const api = {
   plants,
   existingPlants,
   removalPreview,
+  bedEdgePreview,
   designRender,
   designAdjust,
   designs,

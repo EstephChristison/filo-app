@@ -750,6 +750,16 @@ function NewProjectPage() {
   const [currentPath, setCurrentPath] = useState([]);
   const [removalPreview, setRemovalPreview] = useState(null);
   const removalPreviewRef = useRef(null); // Ref mirror — always current, never stale in closures
+  // Bed Edge tool state
+  const [bedPrepSubStep, setBedPrepSubStep] = useState('removal'); // 'removal' | 'bedEdge'
+  const [bedEdgePath, setBedEdgePath] = useState([]);
+  const [bedEdgeDrawing, setBedEdgeDrawing] = useState(false);
+  const [bedEdgeCurrentPath, setBedEdgeCurrentPath] = useState([]);
+  const [bedEdgeStyle, setBedEdgeStyle] = useState('rounded'); // 'square' | 'rounded'
+  const [bedEdgeAdjustment, setBedEdgeAdjustment] = useState(0); // -10 to +10 feet
+  const [bedEdgePreview, setBedEdgePreview] = useState(null);
+  const bedEdgePreviewRef = useRef(null);
+  const [generatingBedEdge, setGeneratingBedEdge] = useState(false);
   const [designRenderUrl, setDesignRenderUrl] = useState(null);
   const [designMode, setDesignMode] = useState('auto');
   const [adjustPin, setAdjustPin] = useState(null); // { x: %, y: % }
@@ -926,14 +936,15 @@ function NewProjectPage() {
               }
             }
 
-            // Auto-trigger AI visual render — check localStorage for removal preview (bulletproof, no stale closures)
+            // Auto-trigger AI visual render — check localStorage for most-processed image
+            const savedBedEdge = (() => { try { return localStorage.getItem('filo_bed_edge_preview'); } catch(e) { return null; } })();
             const savedRemovalPreview = (() => { try { return localStorage.getItem('filo_removal_preview'); } catch(e) { return null; } })();
             if (finalPlants.length > 0 && !designRenderUrl) {
               const photoUrls = Object.values(uploadedPhotos || {}).flat().map(p => p?.file?.cdn_url || p?.cdn_url).filter(Boolean);
               if (photoUrls.length > 0) {
-                const photoToUse = savedRemovalPreview || photoUrls[0];
+                const photoToUse = savedBedEdge || savedRemovalPreview || photoUrls[0];
                 setGeneratingRender(true);
-                console.log('[auto-render] Using:', savedRemovalPreview ? 'REMOVAL PREVIEW from localStorage (' + Math.round(savedRemovalPreview.length/1024) + 'KB)' : 'ORIGINAL PHOTO');
+                console.log('[auto-render] Using:', savedBedEdge ? 'BED EDGE PREVIEW' : savedRemovalPreview ? 'REMOVAL PREVIEW' : 'ORIGINAL PHOTO');
                 api.designRender.generate(
                   photoToUse,
                   finalPlants,
@@ -1352,117 +1363,311 @@ function NewProjectPage() {
             } finally { setGeneratingPreview(false); }
           };
 
+          // Bed edge drawing handlers
+          const getBedEdgePoint = (e) => {
+            const svg = e.currentTarget || e.target?.closest?.('svg');
+            if (!svg) return null;
+            const rect = svg.getBoundingClientRect();
+            const clientX = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
+            const clientY = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
+            return { x: (clientX - rect.left) / rect.width * 1000, y: (clientY - rect.top) / rect.height * 1000 };
+          };
+          const startBedEdgeDraw = (e) => {
+            if (e.type === 'touchstart') e.preventDefault();
+            const pt = getBedEdgePoint(e);
+            if (!pt) return;
+            setBedEdgeDrawing(true);
+            setBedEdgeCurrentPath([pt]);
+          };
+          const moveBedEdgeDraw = (e) => {
+            if (!bedEdgeDrawing) return;
+            if (e.type === 'touchmove') e.preventDefault();
+            const pt = getBedEdgePoint(e);
+            if (!pt) return;
+            setBedEdgeCurrentPath(prev => [...prev, pt]);
+          };
+          const endBedEdgeDraw = () => {
+            if (bedEdgeCurrentPath.length > 3) setBedEdgePath(bedEdgeCurrentPath);
+            setBedEdgeDrawing(false);
+            setBedEdgeCurrentPath([]);
+          };
+          const getBedEdgeMaskDataUrl = () => {
+            if (!bedEdgePath || bedEdgePath.length < 3) return null;
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024; canvas.height = 1024;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, 1024, 1024);
+            ctx.fillStyle = '#000000';
+            ctx.beginPath();
+            ctx.moveTo(bedEdgePath[0].x * 1.024, bedEdgePath[0].y * 1.024);
+            for (let i = 1; i < bedEdgePath.length; i++) {
+              ctx.lineTo(bedEdgePath[i].x * 1.024, bedEdgePath[i].y * 1.024);
+            }
+            ctx.closePath();
+            ctx.fill();
+            return canvas.toDataURL('image/png');
+          };
+          const generateBedEdge = async () => {
+            if (!api || generatingBedEdge || bedEdgePath.length < 3) return;
+            setGeneratingBedEdge(true);
+            try {
+              const maskDataUrl = getBedEdgeMaskDataUrl();
+              const basePhoto = removalPreview || photoUrls[0];
+              const result = await api.bedEdgePreview.generate(basePhoto, maskDataUrl, bedEdgeStyle, bedEdgeAdjustment);
+              setBedEdgePreview(result.previewUrl);
+              bedEdgePreviewRef.current = result.previewUrl;
+              try { localStorage.setItem('filo_bed_edge_preview', result.previewUrl); } catch (e) {}
+            } catch (err) {
+              console.error('Bed edge generation failed:', err.message);
+              alert('Bed edge generation failed: ' + err.message);
+            } finally { setGeneratingBedEdge(false); }
+          };
+
           return (
           <div className="scale-in">
             <div className="card" style={{ marginBottom: 24 }}>
               <div className="card-header">
                 <h3 style={{ fontFamily: "var(--font-display)" }}>Bed Preparation</h3>
                 <p style={{ fontSize: 13, color: "var(--filo-grey)", margin: "4px 0 0" }}>
-                  Draw around the plants you want removed, then generate a preview of the prepared bed.
+                  Remove unwanted plants, then define the bed edge shape.
                 </p>
+              </div>
+              {/* Sub-step tabs */}
+              <div style={{ display: "flex", borderBottom: "1px solid #E5E7EB" }}>
+                <button onClick={() => setBedPrepSubStep('removal')}
+                  style={{ flex: 1, padding: "12px 16px", fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer",
+                    background: bedPrepSubStep === 'removal' ? '#fff' : '#F9FAFB',
+                    color: bedPrepSubStep === 'removal' ? '#DC2626' : 'var(--filo-grey)',
+                    borderBottom: bedPrepSubStep === 'removal' ? '3px solid #DC2626' : '3px solid transparent' }}>
+                  Step A: Plant Removal {removalPreview ? '✓' : ''}
+                </button>
+                <button onClick={() => setBedPrepSubStep('bedEdge')}
+                  style={{ flex: 1, padding: "12px 16px", fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer",
+                    background: bedPrepSubStep === 'bedEdge' ? '#fff' : '#F9FAFB',
+                    color: bedPrepSubStep === 'bedEdge' ? 'var(--filo-green)' : 'var(--filo-grey)',
+                    borderBottom: bedPrepSubStep === 'bedEdge' ? '3px solid var(--filo-green)' : '3px solid transparent' }}>
+                  Step B: Bed Edge {bedEdgePreview ? '✓' : ''}
+                </button>
               </div>
               <div className="card-body">
                 {photoUrls.length > 0 ? (
                   <>
-                    {/* Toolbar */}
-                    <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-                      <button className={`btn btn-sm ${drawMode === 'remove' ? '' : 'btn-ghost'}`}
-                        style={drawMode === 'remove' ? { background: '#DC2626', color: '#fff', border: 'none', fontWeight: 600 } : { fontWeight: 600 }}
-                        onClick={() => setDrawMode(drawMode === 'remove' ? false : 'remove')}>
-                        {drawMode === 'remove' ? '🖌 Drawing — Circle plants to remove' : '🖌 Start Drawing'}
-                      </button>
-                      {drawPaths.length > 0 && (
-                        <>
-                          <button className="btn btn-sm btn-ghost" onClick={() => { setDrawPaths(prev => prev.slice(0, -1)); setRemovalPreview(null); removalPreviewRef.current = null; try { localStorage.removeItem('filo_removal_preview'); } catch(e){} }}>Undo</button>
-                          <button className="btn btn-sm btn-ghost" style={{ color: '#DC2626' }} onClick={() => { setDrawPaths([]); setRemovalPreview(null); removalPreviewRef.current = null; try { localStorage.removeItem('filo_removal_preview'); } catch(e){} }}>Clear All</button>
-                          <span style={{ fontSize: 12, color: 'var(--filo-grey)' }}>{drawPaths.length} area{drawPaths.length !== 1 ? 's' : ''} marked</span>
-                        </>
-                      )}
-                      <div style={{ flex: 1 }} />
-                      {drawPaths.length > 0 && !removalPreview && (
-                        <button className="btn btn-sm" onClick={generateBedPrep} disabled={generatingPreview}
-                          style={{ background: '#DC2626', color: '#fff', border: 'none', fontWeight: 600, padding: '8px 20px' }}>
-                          {generatingPreview ? '⟳ Generating Preview...' : '✨ Generate Removal Preview'}
-                        </button>
-                      )}
-                      {removalPreview && (
-                        <button className="btn btn-sm" onClick={() => { setRemovalPreview(null); removalPreviewRef.current = null; try { localStorage.removeItem('filo_removal_preview'); } catch(e){} }} style={{ fontWeight: 600 }}>
-                          ← Back to Draw
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Preview result OR drawing canvas */}
-                    {removalPreview ? (
-                      <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 12 }}>
-                        <img src={removalPreview} alt="Bed Preparation Preview" style={{ width: "100%", display: "block" }} />
-                        <div style={{ position: "absolute", top: 12, left: 12, background: "#DC2626", color: "#fff", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
-                          BED PREP COMPLETE
-                        </div>
-                        <div style={{ position: "absolute", top: 12, right: 12, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "4px 10px", borderRadius: 4, fontSize: 10, fontWeight: 700 }}>FILO AI</div>
-                        <button className="btn btn-sm" onClick={generateBedPrep} disabled={generatingPreview}
-                          style={{ position: "absolute", bottom: 12, right: 12, background: "rgba(0,0,0,0.7)", color: "#fff", border: "none", fontSize: 11 }}>
-                          {generatingPreview ? "Regenerating..." : "Regenerate"}
-                        </button>
-                      </div>
-                    ) : (
+                    {/* ═══ SUB-STEP A: Plant Removal ═══ */}
+                    {bedPrepSubStep === 'removal' && (
                       <>
-                        {photoUrls.map((url, photoIdx) => (
-                          <div key={photoIdx} style={{
-                            position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 12,
-                            border: `2px solid ${drawMode === 'remove' ? '#DC2626' : '#E5E7EB'}`,
-                            cursor: drawMode ? 'crosshair' : 'default', userSelect: "none",
-                          }}>
-                            <img src={url} alt="Property" style={{ width: "100%", display: "block", pointerEvents: "none" }} draggable={false} />
-                            <svg
-                              style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", zIndex: 5 }}
-                              viewBox="0 0 1000 1000" preserveAspectRatio="none"
-                              onMouseDown={startDraw} onMouseMove={moveDraw} onMouseUp={endDraw} onMouseLeave={endDraw}
-                              onTouchStart={startDraw} onTouchMove={moveDraw} onTouchEnd={endDraw}
-                            >
-                              {(drawPaths || []).map((path, i) => {
-                                const pts = path?.points || path;
-                                if (!Array.isArray(pts) || pts.length < 2) return null;
-                                return <polygon key={i} points={pts.map(p => `${p.x},${p.y}`).join(' ')}
-                                  fill="rgba(220,38,38,0.3)" stroke="#DC2626" strokeWidth="3" strokeDasharray="8,4" />;
-                              })}
-                              {currentPath.length > 1 && (
-                                <polyline points={currentPath.map(p => `${p.x},${p.y}`).join(' ')}
-                                  fill="none" stroke="#DC2626" strokeWidth="3" strokeDasharray="6,3" />
-                              )}
-                            </svg>
-                            {drawMode === 'remove' && (
-                              <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", background: "#DC2626", color: "#fff", padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, zIndex: 25, pointerEvents: "none" }}>
-                                Draw around plants to remove
-                              </div>
-                            )}
-                            {!drawMode && drawPaths.length === 0 && (
-                              <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", textAlign: "center", zIndex: 3 }}>
-                                <div style={{ background: "rgba(0,0,0,0.75)", color: "#fff", padding: "12px 24px", borderRadius: 8, fontSize: 14, fontWeight: 600 }}>
-                                  Click "Start Drawing" then circle the plants to remove
-                                </div>
-                              </div>
-                            )}
+                        {/* Toolbar */}
+                        <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+                          <button className={`btn btn-sm ${drawMode === 'remove' ? '' : 'btn-ghost'}`}
+                            style={drawMode === 'remove' ? { background: '#DC2626', color: '#fff', border: 'none', fontWeight: 600 } : { fontWeight: 600 }}
+                            onClick={() => setDrawMode(drawMode === 'remove' ? false : 'remove')}>
+                            {drawMode === 'remove' ? '🖌 Drawing — Circle plants to remove' : '🖌 Start Drawing'}
+                          </button>
+                          {drawPaths.length > 0 && (
+                            <>
+                              <button className="btn btn-sm btn-ghost" onClick={() => { setDrawPaths(prev => prev.slice(0, -1)); setRemovalPreview(null); removalPreviewRef.current = null; try { localStorage.removeItem('filo_removal_preview'); } catch(e){} }}>Undo</button>
+                              <button className="btn btn-sm btn-ghost" style={{ color: '#DC2626' }} onClick={() => { setDrawPaths([]); setRemovalPreview(null); removalPreviewRef.current = null; try { localStorage.removeItem('filo_removal_preview'); } catch(e){} }}>Clear All</button>
+                              <span style={{ fontSize: 12, color: 'var(--filo-grey)' }}>{drawPaths.length} area{drawPaths.length !== 1 ? 's' : ''} marked</span>
+                            </>
+                          )}
+                          <div style={{ flex: 1 }} />
+                          {drawPaths.length > 0 && !removalPreview && (
+                            <button className="btn btn-sm" onClick={generateBedPrep} disabled={generatingPreview}
+                              style={{ background: '#DC2626', color: '#fff', border: 'none', fontWeight: 600, padding: '8px 20px' }}>
+                              {generatingPreview ? '⟳ Generating Preview...' : '✨ Generate Removal Preview'}
+                            </button>
+                          )}
+                          {removalPreview && (
+                            <button className="btn btn-sm" onClick={() => { setRemovalPreview(null); removalPreviewRef.current = null; try { localStorage.removeItem('filo_removal_preview'); } catch(e){} }} style={{ fontWeight: 600 }}>
+                              ← Back to Draw
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Preview result OR drawing canvas */}
+                        {removalPreview ? (
+                          <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 12 }}>
+                            <img src={removalPreview} alt="Bed Preparation Preview" style={{ width: "100%", display: "block" }} />
+                            <div style={{ position: "absolute", top: 12, left: 12, background: "#DC2626", color: "#fff", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
+                              PLANTS REMOVED
+                            </div>
+                            <div style={{ position: "absolute", top: 12, right: 12, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "4px 10px", borderRadius: 4, fontSize: 10, fontWeight: 700 }}>FILO AI</div>
+                            <button className="btn btn-sm" onClick={generateBedPrep} disabled={generatingPreview}
+                              style={{ position: "absolute", bottom: 12, right: 12, background: "rgba(0,0,0,0.7)", color: "#fff", border: "none", fontSize: 11 }}>
+                              {generatingPreview ? "Regenerating..." : "Regenerate"}
+                            </button>
                           </div>
-                        ))}
+                        ) : (
+                          <>
+                            {photoUrls.map((url, photoIdx) => (
+                              <div key={photoIdx} style={{
+                                position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 12,
+                                border: `2px solid ${drawMode === 'remove' ? '#DC2626' : '#E5E7EB'}`,
+                                cursor: drawMode ? 'crosshair' : 'default', userSelect: "none",
+                              }}>
+                                <img src={url} alt="Property" style={{ width: "100%", display: "block", pointerEvents: "none" }} draggable={false} />
+                                <svg
+                                  style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", zIndex: 5 }}
+                                  viewBox="0 0 1000 1000" preserveAspectRatio="none"
+                                  onMouseDown={startDraw} onMouseMove={moveDraw} onMouseUp={endDraw} onMouseLeave={endDraw}
+                                  onTouchStart={startDraw} onTouchMove={moveDraw} onTouchEnd={endDraw}
+                                >
+                                  {(drawPaths || []).map((path, i) => {
+                                    const pts = path?.points || path;
+                                    if (!Array.isArray(pts) || pts.length < 2) return null;
+                                    return <polygon key={i} points={pts.map(p => `${p.x},${p.y}`).join(' ')}
+                                      fill="rgba(220,38,38,0.3)" stroke="#DC2626" strokeWidth="3" strokeDasharray="8,4" />;
+                                  })}
+                                  {currentPath.length > 1 && (
+                                    <polyline points={currentPath.map(p => `${p.x},${p.y}`).join(' ')}
+                                      fill="none" stroke="#DC2626" strokeWidth="3" strokeDasharray="6,3" />
+                                  )}
+                                </svg>
+                                {drawMode === 'remove' && (
+                                  <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", background: "#DC2626", color: "#fff", padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, zIndex: 25, pointerEvents: "none" }}>
+                                    Draw around plants to remove
+                                  </div>
+                                )}
+                                {!drawMode && drawPaths.length === 0 && (
+                                  <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", textAlign: "center", zIndex: 3 }}>
+                                    <div style={{ background: "rgba(0,0,0,0.75)", color: "#fff", padding: "12px 24px", borderRadius: 8, fontSize: 14, fontWeight: 600 }}>
+                                      Click "Start Drawing" then circle the plants to remove
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </>
+                        )}
+
+                        {/* Removal cost */}
+                        <div style={{ marginTop: 16 }}>
+                          <label className="form-label">Removal & haul-away cost</label>
+                          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                            <span style={{ fontSize: 14, fontWeight: 500 }}>$</span>
+                            <input className="form-input" style={{ width: 120 }} value={removalCost}
+                              onChange={e => setRemovalCost(e.target.value)} />
+                            <span style={{ fontSize: 13, color: "var(--filo-grey)" }}>Includes haul away</span>
+                          </div>
+                        </div>
+
+                        {removalPreview && (
+                          <div style={{ marginTop: 16, padding: 16, background: "var(--filo-green-pale)", borderRadius: "var(--radius-sm)", fontSize: 13, color: "var(--filo-green)" }}>
+                            ✅ Plants removed. Switch to "Step B: Bed Edge" to define the bed shape, or click "Save & Continue" to proceed.
+                          </div>
+                        )}
+                        {!removalPreview && drawPaths.length === 0 && (
+                          <div style={{ marginTop: 16, padding: 12, background: "#F9FAFB", borderRadius: "var(--radius-sm)", fontSize: 12, color: "var(--filo-grey)" }}>
+                            No plants to remove? Skip to <button onClick={() => setBedPrepSubStep('bedEdge')} style={{ background: "none", border: "none", color: "var(--filo-green)", fontWeight: 600, cursor: "pointer", textDecoration: "underline", fontSize: 12, padding: 0 }}>Bed Edge</button> or click "Save & Continue".
+                          </div>
+                        )}
                       </>
                     )}
 
-                    {/* Removal cost */}
-                    <div style={{ marginTop: 16 }}>
-                      <label className="form-label">Removal & haul-away cost</label>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <span style={{ fontSize: 14, fontWeight: 500 }}>$</span>
-                        <input className="form-input" style={{ width: 120 }} value={removalCost}
-                          onChange={e => setRemovalCost(e.target.value)} />
-                        <span style={{ fontSize: 13, color: "var(--filo-grey)" }}>Includes haul away</span>
-                      </div>
-                    </div>
+                    {/* ═══ SUB-STEP B: Bed Edge ═══ */}
+                    {bedPrepSubStep === 'bedEdge' && (
+                      <>
+                        {/* Edge options row */}
+                        <div style={{ display: "flex", gap: 16, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+                          <div>
+                            <label style={{ fontSize: 11, fontWeight: 600, color: "var(--filo-charcoal)", display: "block", marginBottom: 4 }}>Edge Style</label>
+                            <div className="pill-group">
+                              <span className={`pill ${bedEdgeStyle === 'rounded' ? 'active' : ''}`}
+                                onClick={() => setBedEdgeStyle('rounded')} style={{ fontSize: 12, padding: "4px 12px" }}>Rounded / Curved</span>
+                              <span className={`pill ${bedEdgeStyle === 'square' ? 'active' : ''}`}
+                                onClick={() => setBedEdgeStyle('square')} style={{ fontSize: 12, padding: "4px 12px" }}>Square 90°</span>
+                            </div>
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 11, fontWeight: 600, color: "var(--filo-charcoal)", display: "block", marginBottom: 4 }}>
+                              Adjust Bed Size: <strong>{bedEdgeAdjustment === 0 ? 'No change' : bedEdgeAdjustment > 0 ? `Expand +${bedEdgeAdjustment} ft` : `Shrink ${bedEdgeAdjustment} ft`}</strong>
+                            </label>
+                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                              {[-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10].map(n => (
+                                <span key={n} className={`pill ${bedEdgeAdjustment === n ? 'active' : ''}`}
+                                  onClick={() => setBedEdgeAdjustment(n)}
+                                  style={{ fontSize: 10, padding: "3px 6px", minWidth: 24, textAlign: "center",
+                                    background: bedEdgeAdjustment === n ? (n < 0 ? '#DC2626' : n > 0 ? 'var(--filo-green)' : 'var(--filo-charcoal)') : undefined,
+                                    color: bedEdgeAdjustment === n ? '#fff' : undefined }}>
+                                  {n === 0 ? '0' : n > 0 ? `+${n}'` : `${n}'`}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
 
-                    {removalPreview && (
-                      <div style={{ marginTop: 16, padding: 16, background: "var(--filo-green-pale)", borderRadius: "var(--radius-sm)", fontSize: 13, color: "var(--filo-green)" }}>
-                        ✅ Bed preparation complete. Click "Save & Continue" to set your design preferences.
-                      </div>
+                        {/* Toolbar */}
+                        <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--filo-green)" }}>
+                            {bedEdgePath.length > 0 ? '✓ Bed edge drawn' : 'Draw the bed perimeter below'}
+                          </span>
+                          {bedEdgePath.length > 0 && (
+                            <button className="btn btn-sm btn-ghost" onClick={() => { setBedEdgePath([]); setBedEdgePreview(null); bedEdgePreviewRef.current = null; try { localStorage.removeItem('filo_bed_edge_preview'); } catch(e){} }}>
+                              Clear & Redraw
+                            </button>
+                          )}
+                          <div style={{ flex: 1 }} />
+                          {bedEdgePath.length > 3 && !bedEdgePreview && (
+                            <button className="btn btn-sm" onClick={generateBedEdge} disabled={generatingBedEdge}
+                              style={{ background: 'var(--filo-green)', color: '#fff', border: 'none', fontWeight: 600, padding: '8px 20px' }}>
+                              {generatingBedEdge ? '⟳ Generating Edge Preview...' : '✨ Generate Bed Edge Preview'}
+                            </button>
+                          )}
+                          {bedEdgePreview && (
+                            <button className="btn btn-sm" onClick={() => { setBedEdgePreview(null); bedEdgePreviewRef.current = null; try { localStorage.removeItem('filo_bed_edge_preview'); } catch(e){} }} style={{ fontWeight: 600 }}>
+                              ← Back to Draw
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Bed edge preview result OR drawing canvas */}
+                        {bedEdgePreview ? (
+                          <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 12 }}>
+                            <img src={bedEdgePreview} alt="Bed Edge Preview" style={{ width: "100%", display: "block" }} />
+                            <div style={{ position: "absolute", top: 12, left: 12, background: "var(--filo-green)", color: "#fff", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
+                              BED EDGE {bedEdgeStyle === 'square' ? '90°' : 'CURVED'}{bedEdgeAdjustment !== 0 ? ` · ${bedEdgeAdjustment > 0 ? '+' : ''}${bedEdgeAdjustment} ft` : ''}
+                            </div>
+                            <div style={{ position: "absolute", top: 12, right: 12, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "4px 10px", borderRadius: 4, fontSize: 10, fontWeight: 700 }}>FILO AI</div>
+                            <button className="btn btn-sm" onClick={generateBedEdge} disabled={generatingBedEdge}
+                              style={{ position: "absolute", bottom: 12, right: 12, background: "rgba(0,0,0,0.7)", color: "#fff", border: "none", fontSize: 11 }}>
+                              {generatingBedEdge ? "Regenerating..." : "Regenerate"}
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{
+                            position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 12,
+                            border: '2px solid var(--filo-green)', cursor: 'crosshair', userSelect: "none",
+                          }}>
+                            <img src={removalPreview || photoUrls[0]} alt="Property" style={{ width: "100%", display: "block", pointerEvents: "none" }} draggable={false} />
+                            <svg
+                              style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", zIndex: 5 }}
+                              viewBox="0 0 1000 1000" preserveAspectRatio="none"
+                              onMouseDown={startBedEdgeDraw} onMouseMove={moveBedEdgeDraw} onMouseUp={endBedEdgeDraw} onMouseLeave={endBedEdgeDraw}
+                              onTouchStart={startBedEdgeDraw} onTouchMove={moveBedEdgeDraw} onTouchEnd={endBedEdgeDraw}
+                            >
+                              {bedEdgePath.length > 2 && (
+                                <polygon points={bedEdgePath.map(p => `${p.x},${p.y}`).join(' ')}
+                                  fill="rgba(45,106,79,0.15)" stroke="#2D6A4F" strokeWidth="3" />
+                              )}
+                              {bedEdgeCurrentPath.length > 1 && (
+                                <polyline points={bedEdgeCurrentPath.map(p => `${p.x},${p.y}`).join(' ')}
+                                  fill="none" stroke="#2D6A4F" strokeWidth="3" />
+                              )}
+                            </svg>
+                            {bedEdgePath.length === 0 && !bedEdgeDrawing && (
+                              <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", background: "var(--filo-green)", color: "#fff", padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, zIndex: 25, pointerEvents: "none" }}>
+                                Draw around the full bed perimeter
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {bedEdgePreview && (
+                          <div style={{ marginTop: 16, padding: 16, background: "var(--filo-green-pale)", borderRadius: "var(--radius-sm)", fontSize: 13, color: "var(--filo-green)" }}>
+                            ✅ Bed edge defined. Click "Save & Continue" to set your design preferences.
+                          </div>
+                        )}
+                      </>
                     )}
                   </>
                 ) : (
@@ -1614,10 +1819,11 @@ function NewProjectPage() {
                           if (finalPlants.length > 0) {
                             const photoUrls = Object.values(uploadedPhotos || {}).flat().map(p => p?.file?.cdn_url || p?.cdn_url).filter(Boolean);
                             if (photoUrls.length > 0) {
-                              // Read removal preview from localStorage (immune to stale closures)
-                              const lsPreview = (() => { try { return localStorage.getItem('filo_removal_preview'); } catch(e) { return null; } })();
-                              const photoToUse = lsPreview || photoUrls[0];
-                              console.log('[step5-btn-render] Using:', lsPreview ? 'REMOVAL PREVIEW from localStorage' : 'ORIGINAL PHOTO');
+                              // Read most-processed preview from localStorage
+                              const lsBedEdge = (() => { try { return localStorage.getItem('filo_bed_edge_preview'); } catch(e) { return null; } })();
+                              const lsRemoval = (() => { try { return localStorage.getItem('filo_removal_preview'); } catch(e) { return null; } })();
+                              const photoToUse = lsBedEdge || lsRemoval || photoUrls[0];
+                              console.log('[step5-btn-render] Using:', lsBedEdge ? 'BED EDGE PREVIEW' : lsRemoval ? 'REMOVAL PREVIEW' : 'ORIGINAL PHOTO');
                               setGeneratingRender(true);
                               api.designRender.generate(
                                 photoToUse, finalPlants,
@@ -1688,13 +1894,11 @@ function NewProjectPage() {
               const generateFinalDesign = async () => {
                 if (!api || generatingRender) return;
                 setGeneratingRender(true);
-                // Read removal preview from ALL sources — localStorage is bulletproof against stale closures
-                const lsPreview = (() => { try { return localStorage.getItem('filo_removal_preview'); } catch(e) { return null; } })();
-                const currentRemovalPreview = lsPreview || removalPreviewRef.current || removalPreview;
-                console.log('[generateFinalDesign] localStorage:', !!lsPreview, 'ref:', !!removalPreviewRef.current, 'state:', !!removalPreview);
-                console.log('[generateFinalDesign] photoUrls[0]:', photoUrls[0]?.substring(0, 60));
-                const photoToSend = currentRemovalPreview || photoUrls[0];
-                console.log('[generateFinalDesign] Sending:', photoToSend?.startsWith('data:') ? 'REMOVAL PREVIEW (data URL)' : 'ORIGINAL PHOTO (URL)');
+                // Read most-processed preview — bed edge > removal > original
+                const lsBedEdge = (() => { try { return localStorage.getItem('filo_bed_edge_preview'); } catch(e) { return null; } })();
+                const lsRemoval = (() => { try { return localStorage.getItem('filo_removal_preview'); } catch(e) { return null; } })();
+                const photoToSend = lsBedEdge || lsRemoval || bedEdgePreviewRef.current || removalPreviewRef.current || photoUrls[0];
+                console.log('[generateFinalDesign] Using:', lsBedEdge ? 'BED EDGE' : lsRemoval ? 'REMOVAL' : 'ORIGINAL PHOTO');
                 try {
                   const maskDataUrl = getMaskFromDrawPaths();
                   const result = await api.designRender.generate(
