@@ -766,10 +766,10 @@ function NewProjectPage() {
   const bedEdgePreviewRef = useRef(null);
   const [generatingBedEdge, setGeneratingBedEdge] = useState(false);
   const [designRenderUrl, setDesignRenderUrl] = useState(null);
-  const [designMode, setDesignMode] = useState('auto');
   const [adjustPin, setAdjustPin] = useState(null); // { x: %, y: % }
   const [adjustPrompt, setAdjustPrompt] = useState('');
   const [adjusting, setAdjusting] = useState(false);
+  const [adjustRadius, setAdjustRadius] = useState(15); // % of image width
   const [generatingPreview, setGeneratingPreview] = useState(false);
   const [generatingRender, setGeneratingRender] = useState(false);
   const removalCanvasRef = useRef(null);
@@ -1732,27 +1732,6 @@ function NewProjectPage() {
               );
             })()}
 
-            {/* Design Mode Toggle */}
-            <div className="card" style={{ marginBottom: 24 }}>
-              <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Design Mode</h3></div>
-              <div className="card-body">
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                  <div onClick={() => setDesignMode && setDesignMode('auto')}
-                    style={{ padding: 20, borderRadius: "var(--radius-md)", border: `2px solid ${(!designMode || designMode === 'auto') ? 'var(--filo-green)' : 'var(--filo-border)'}`, background: (!designMode || designMode === 'auto') ? 'var(--filo-green-pale)' : '#fff', cursor: "pointer", textAlign: "center", transition: "all 0.2s" }}>
-                    <div style={{ fontSize: 28, marginBottom: 8 }}>🤖</div>
-                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>AI Auto-Design</div>
-                    <div style={{ fontSize: 12, color: "var(--filo-grey)" }}>AI selects plants & generates a photorealistic render based on your preferences</div>
-                  </div>
-                  <div onClick={() => setDesignMode && setDesignMode('adjust')}
-                    style={{ padding: 20, borderRadius: "var(--radius-md)", border: `2px solid ${designMode === 'adjust' ? 'var(--filo-green)' : 'var(--filo-border)'}`, background: designMode === 'adjust' ? 'var(--filo-green-pale)' : '#fff', cursor: "pointer", textAlign: "center", transition: "all 0.2s" }}>
-                    <div style={{ fontSize: 28, marginBottom: 8 }}>📌</div>
-                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Design Adjustments</div>
-                    <div style={{ fontSize: 12, color: "var(--filo-grey)" }}>Drop a pin on the render and describe what to change — AI edits only that area</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
             {/* Design Preferences (inline) */}
             <div className="card" style={{ marginBottom: 24 }}>
               <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Design Preferences</h3></div>
@@ -1938,31 +1917,29 @@ function NewProjectPage() {
                     ) : designRenderUrl ? (
                       <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
                         <img src={designRenderUrl} alt="Final Design Render"
-                          style={{ width: "100%", display: "block", borderRadius: "var(--radius-md)", cursor: designMode === 'adjust' ? 'crosshair' : 'default' }}
-                          onClick={designMode === 'adjust' ? (e) => {
+                          style={{ width: "100%", display: "block", borderRadius: "var(--radius-md)", cursor: 'crosshair' }}
+                          onClick={(e) => {
                             const rect = e.currentTarget.getBoundingClientRect();
                             const x = ((e.clientX - rect.left) / rect.width) * 100;
                             const y = ((e.clientY - rect.top) / rect.height) * 100;
                             setAdjustPin({ x, y });
                             setAdjustPrompt('');
-                          } : undefined}
+                          }}
                         />
-                        {/* Pin marker */}
-                        {designMode === 'adjust' && adjustPin && (
+                        {/* Pin marker + radius circle */}
+                        {adjustPin && (
                           <>
                             <div style={{ position: "absolute", left: `${adjustPin.x}%`, top: `${adjustPin.y}%`, transform: "translate(-50%, -100%)", pointerEvents: "none", zIndex: 10 }}>
                               <div style={{ fontSize: 28, lineHeight: 1, filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.5))" }}>📌</div>
                             </div>
-                            {/* Radius circle preview */}
-                            <div style={{ position: "absolute", left: `${adjustPin.x}%`, top: `${adjustPin.y}%`, transform: "translate(-50%, -50%)", width: "20%", height: "20%", border: "2px dashed rgba(255,255,255,0.7)", borderRadius: "50%", pointerEvents: "none", zIndex: 9, boxShadow: "0 0 0 1px rgba(0,0,0,0.3)" }} />
+                            <div style={{ position: "absolute", left: `${adjustPin.x}%`, top: `${adjustPin.y}%`, transform: "translate(-50%, -50%)", width: `${adjustRadius * 2}%`, height: `${adjustRadius * 2}%`, border: "2px dashed rgba(255,255,255,0.7)", borderRadius: "50%", pointerEvents: "none", zIndex: 9, boxShadow: "0 0 0 1px rgba(0,0,0,0.3)" }} />
                           </>
                         )}
                         <div style={{ position: "absolute", top: 12, left: 12, background: "var(--filo-green)", color: "#fff", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
                           FINAL DESIGN — {totalPlantCount} new plants installed
                         </div>
-                        <div style={{ position: "absolute", top: 12, right: 12, background: designMode === 'adjust' ? "rgba(59,130,246,0.85)" : "rgba(0,0,0,0.6)", color: "#fff", padding: "4px 10px", borderRadius: 4, fontSize: 10, fontWeight: 700 }}>
-                          {designMode === 'adjust' ? 'TAP TO DROP PIN' : 'FILO AI Render'}
-                        </div>
+                        <div style={{ position: "absolute", top: 12, right: 12, background: adjustPin ? "rgba(59,130,246,0.85)" : "rgba(0,0,0,0.6)", color: "#fff", padding: "4px 10px", borderRadius: 4, fontSize: 10, fontWeight: 700 }}>
+                          {adjustPin ? 'PIN PLACED — Describe change below' : 'TAP IMAGE TO ADJUST'}
                         <button className="btn btn-sm btn-ghost" onClick={() => { setDesignRenderUrl(null); setAdjustPin(null); }}
                           style={{ position: "absolute", bottom: 12, left: 12, background: "rgba(0,0,0,0.7)", color: "#fff", border: "none", fontSize: 11 }}>← Redo</button>
                         <button className="btn btn-sm btn-ghost" onClick={generateFinalDesign} disabled={generatingRender}
@@ -1986,26 +1963,47 @@ function NewProjectPage() {
                   </div>
                 </div>
 
-                {/* Design Adjustments — pin prompt panel */}
-                {designMode === 'adjust' && designRenderUrl && (
+                {/* Design Adjustments — always visible when render exists */}
+                {designRenderUrl && (
                   <div className="card" style={{ marginBottom: 24 }}>
                     <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Design Adjustments</h3></div>
                     <div className="card-body">
                       {!adjustPin ? (
                         <p style={{ color: "var(--filo-grey)", fontSize: 14, margin: 0 }}>
-                          Tap anywhere on the rendered design above to drop a pin. The AI will only edit within a tight circle around that pin.
+                          Tap anywhere on the design above to drop a pin, then describe what you want changed.
+                          <br /><span style={{ fontSize: 12 }}>Examples: "Change mulch to blackstar gravel" · "Change mulch to black mulch" · "Replace these shrubs with knockout roses" · "Add a stone border here"</span>
                         </p>
                       ) : (
                         <div>
                           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                             <span style={{ fontSize: 20 }}>📌</span>
                             <span style={{ fontSize: 13, color: "var(--filo-grey)" }}>
-                              Pin placed at ({Math.round(adjustPin.x)}%, {Math.round(adjustPin.y)}%) — tap image to reposition
+                              Pin placed — tap image to reposition
                             </span>
                             <button className="btn btn-sm btn-ghost" onClick={() => { setAdjustPin(null); setAdjustPrompt(''); }}
                               style={{ marginLeft: "auto", fontSize: 11, color: "var(--filo-grey)" }}>Clear pin</button>
                           </div>
-                          <textarea className="form-input" placeholder="Describe the change, e.g. 'Replace with knockout roses' or 'Add purple liriope border here' or 'Remove this plant'"
+                          {/* Adjustment area size */}
+                          <div style={{ marginBottom: 12 }}>
+                            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--filo-grey)", display: "block", marginBottom: 6 }}>Adjustment Area Size</label>
+                            <div className="pill-group">
+                              {[
+                                { value: 5, label: 'XS' },
+                                { value: 10, label: 'S' },
+                                { value: 15, label: 'M' },
+                                { value: 25, label: 'L' },
+                                { value: 40, label: 'XL' },
+                                { value: 50, label: 'Full' },
+                              ].map(opt => (
+                                <span key={opt.value} className={cn("pill", adjustRadius === opt.value && "active")}
+                                  onClick={() => setAdjustRadius(opt.value)}
+                                  style={{ fontSize: 12, padding: "4px 12px", cursor: "pointer" }}>
+                                  {opt.label}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <textarea className="form-input" placeholder="Describe the change... e.g. 'Change mulch to blackstar gravel', 'Replace with knockout roses', 'Add landscape lighting here'"
                             value={adjustPrompt} onChange={e => setAdjustPrompt(e.target.value)}
                             style={{ minHeight: 60, fontSize: 13, marginBottom: 12 }} />
                           <button className="btn btn-primary" disabled={!adjustPrompt.trim() || adjusting}
@@ -2013,7 +2011,7 @@ function NewProjectPage() {
                               setAdjusting(true);
                               try {
                                 const api = apiRef.current;
-                                const result = await api.designAdjust.apply(designRenderUrl, adjustPin.x, adjustPin.y, 10, adjustPrompt);
+                                const result = await api.designAdjust.apply(designRenderUrl, adjustPin.x, adjustPin.y, adjustRadius, adjustPrompt);
                                 setDesignRenderUrl(result.renderUrl);
                                 setAdjustPin(null);
                                 setAdjustPrompt('');
