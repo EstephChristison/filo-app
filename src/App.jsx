@@ -492,7 +492,6 @@ function Sidebar({ page, setPage, mobileOpen, setMobileOpen, user }) {
     ]},
     { section: "Library", items: [
       { id: "plants", icon: "🌿", label: "Products & Services" },
-      { id: "templates", icon: "📋", label: "Templates" },
     ]},
     { section: "Business", items: [
       { id: "estimates", icon: "💰", label: "Estimates" },
@@ -545,7 +544,7 @@ function Sidebar({ page, setPage, mobileOpen, setMobileOpen, user }) {
 function TopBar({ page, setMobileOpen }) {
   const titles = {
     projects: "Projects", "new-project": "New Project",
-    clients: "Clients", plants: "Products & Services", templates: "Templates",
+    clients: "Clients", plants: "Products & Services",
     estimates: "Estimates", submittals: "Submittals", crm: "CRM Integration",
     settings: "Settings", billing: "Billing", team: "Team",
   };
@@ -2886,44 +2885,103 @@ function NewProjectPage() {
 
 // ─── Products & Services ───────────────────────────────────────────────
 function PlantLibraryPage() {
+  const { apiRef } = useApp();
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
-  const filtered = PLANTS_DB.filter(p =>
-    (filter === "all" || p.type === filter) &&
-    (search === "" || p.name.toLowerCase().includes(search.toLowerCase()))
-  );
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const api = apiRef.current;
+        if (!api) return;
+        const result = await api.plants.list();
+        setProducts(Array.isArray(result) ? result : result.plants || []);
+      } catch (err) {
+        console.error('Failed to load products:', err.message);
+      } finally { setLoading(false); }
+    };
+    load();
+  }, []);
+
+  const filtered = products.filter(p => {
+    const matchesFilter = filter === 'all' || (p.category || '').toLowerCase() === filter;
+    const matchesSearch = !search || (p.common_name || '').toLowerCase().includes(search.toLowerCase()) || (p.botanical_name || '').toLowerCase().includes(search.toLowerCase());
+    return matchesFilter && matchesSearch;
+  });
+
+  const categories = [...new Set(products.map(p => p.category).filter(Boolean))];
 
   return (
     <div className="fade-in">
       <div className="page-header">
         <div>
           <h2>Products & Services</h2>
-          <p>{PLANTS_DB.length} items in your products & services library</p>
+          <p>{products.length} items in your library</p>
         </div>
-        <button className="btn btn-primary">+ Add Plant</button>
+        <button className="btn btn-primary" onClick={() => {
+          const name = prompt('Product/plant name:');
+          if (!name?.trim()) return;
+          const api = apiRef.current;
+          if (!api) return;
+          api.plants.create({ common_name: name.trim() }).then(() => {
+            api.plants.list().then(r => setProducts(Array.isArray(r) ? r : r.plants || []));
+          }).catch(err => alert('Failed: ' + err.message));
+        }}>+ Add Product</button>
       </div>
       <div className="page-body">
         <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
           <input className="form-input" style={{ maxWidth: 300 }} placeholder="Search products & services..."
             value={search} onChange={e => setSearch(e.target.value)} />
           <div className="pill-group">
-            {[["all", "All"], ["shrub", "Shrubs"], ["tree", "Trees"], ["perennial", "Perennials"], ["groundcover", "Groundcover"], ["ornamental_grass", "Grasses"]].map(([val, label]) => (
+            <span className={cn("pill", filter === "all" && "active")} onClick={() => setFilter("all")}>All</span>
+            {[["shrub", "Shrubs"], ["tree", "Trees"], ["perennial", "Perennials"], ["groundcover", "Groundcover"], ["ornamental_grass", "Grasses"], ["hardscape", "Hardscape"], ["service", "Services"], ["supply", "Supplies"]].map(([val, label]) => (
               <span key={val} className={cn("pill", filter === val && "active")} onClick={() => setFilter(val)}>{label}</span>
             ))}
           </div>
         </div>
-        <div className="plant-grid">
-          {filtered.map((p, i) => (
-            <div key={p.id} className="plant-card fade-in" style={{ animationDelay: `${i * 0.04}s` }}>
-              <div className="plant-icon">{p.img}</div>
-              <div className="plant-name">{p.name}</div>
-              <div className="plant-meta">{p.size} • {p.sun} sun • {p.mature_h} tall</div>
-              <div style={{ fontSize: 12, color: "var(--filo-grey)", marginTop: 4 }}>{p.bloom}</div>
-              <div className="plant-price">{fmt(p.price)}</div>
-              <p style={{ fontSize: 11, color: "var(--filo-grey)", marginTop: 8, fontStyle: "italic", lineHeight: 1.4 }}>{p.desc}</p>
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 48, color: "var(--filo-grey)" }}>Loading products...</div>
+        ) : filtered.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 48, color: "var(--filo-grey)" }}>
+            {products.length === 0 ? 'No products yet. Upload a CSV in Settings > Products & Services.' : 'No matches found.'}
+          </div>
+        ) : (
+          <div className="card">
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Botanical</th>
+                    <th>Category</th>
+                    <th>Size</th>
+                    <th>Wholesale</th>
+                    <th>Retail</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.slice(0, 200).map((p, i) => (
+                    <tr key={p.id || i}>
+                      <td style={{ fontWeight: 600 }}>{p.common_name}</td>
+                      <td style={{ fontStyle: "italic", color: "var(--filo-grey)", fontSize: 12 }}>{p.botanical_name || '—'}</td>
+                      <td><span style={{ fontSize: 11, background: "var(--filo-green-pale)", color: "var(--filo-green)", padding: "2px 8px", borderRadius: 4, textTransform: "capitalize" }}>{p.category || '—'}</span></td>
+                      <td style={{ fontSize: 13 }}>{p.container_size || '—'}</td>
+                      <td style={{ fontSize: 13 }}>{p.wholesale_price ? fmt(p.wholesale_price) : '—'}</td>
+                      <td style={{ fontSize: 13, fontWeight: 600 }}>{p.retail_price ? fmt(p.retail_price) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ))}
-        </div>
+            {filtered.length > 200 && (
+              <div style={{ padding: 12, textAlign: "center", fontSize: 12, color: "var(--filo-grey)" }}>
+                Showing 200 of {filtered.length} results. Use search to narrow down.
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -3428,36 +3486,6 @@ function TeamPage() {
               </tbody>
             </table>
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Templates Page ──────────────────────────────────────────────
-function TemplatesPage() {
-  return (
-    <div className="fade-in">
-      <div className="page-header">
-        <div><h2>Design Templates</h2><p>Saved design configurations and plant lists</p></div>
-        <button className="btn btn-primary">+ New Template</button>
-      </div>
-      <div className="page-body">
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
-          {[
-            { name: "Houston Classic", style: "Formal", plants: 12, icon: "🏛️" },
-            { name: "River Oaks Cottage", style: "Naturalistic", plants: 18, icon: "🌸" },
-            { name: "Modern Minimalist", style: "Modern", plants: 6, icon: "◻️" },
-            { name: "Tropical Paradise", style: "Tropical", plants: 15, icon: "🌴" },
-          ].map((t, i) => (
-            <div key={i} className="card fade-in" style={{ cursor: "pointer", animationDelay: `${i * 0.06}s` }}>
-              <div style={{ height: 120, background: "linear-gradient(135deg, var(--filo-green-pale), var(--filo-offwhite))", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 48 }}>{t.icon}</div>
-              <div className="card-body">
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>{t.name}</div>
-                <div style={{ fontSize: 13, color: "var(--filo-grey)" }}>{t.style} • {t.plants} plants</div>
-              </div>
-            </div>
-          ))}
         </div>
       </div>
     </div>
@@ -4279,7 +4307,6 @@ export default function App() {
     "new-project": <ErrorBoundary><NewProjectPage /></ErrorBoundary>,
     clients: <ClientsPage />,
     plants: <PlantLibraryPage />,
-    templates: <TemplatesPage />,
     estimates: <EstimatesPage />,
     submittals: <SubmittalsPage />,
     crm: <CRMPage />,
