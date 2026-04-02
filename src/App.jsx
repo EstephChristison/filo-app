@@ -491,7 +491,7 @@ function Sidebar({ page, setPage, mobileOpen, setMobileOpen, user }) {
       { id: "clients", icon: "👥", label: "Clients" },
     ]},
     { section: "Library", items: [
-      { id: "plants", icon: "🌿", label: "Plant Library" },
+      { id: "plants", icon: "🌿", label: "Products & Services" },
       { id: "templates", icon: "📋", label: "Templates" },
     ]},
     { section: "Business", items: [
@@ -545,7 +545,7 @@ function Sidebar({ page, setPage, mobileOpen, setMobileOpen, user }) {
 function TopBar({ page, setMobileOpen }) {
   const titles = {
     projects: "Projects", "new-project": "New Project",
-    clients: "Clients", plants: "Plant Library", templates: "Templates",
+    clients: "Clients", plants: "Products & Services", templates: "Templates",
     estimates: "Estimates", submittals: "Submittals", crm: "CRM Integration",
     settings: "Settings", billing: "Billing", team: "Team",
   };
@@ -649,7 +649,7 @@ function DashboardPage({ setPage }) {
             <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", fontSize: 18 }}>Quick Actions</h3></div>
             <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <button className="btn btn-secondary" onClick={() => setPage("new-project")}>🌱 Create New Project</button>
-              <button className="btn btn-secondary" onClick={() => setPage("plants")}>🌿 Browse Plant Library</button>
+              <button className="btn btn-secondary" onClick={() => setPage("plants")}>🌿 Browse Products & Services</button>
               <button className="btn btn-secondary" onClick={() => setPage("estimates")}>💰 View Pending Estimates</button>
               <button className="btn btn-secondary" onClick={() => setPage("crm")}>🔗 CRM Sync Status</button>
             </div>
@@ -2884,7 +2884,7 @@ function NewProjectPage() {
   );
 }
 
-// ─── Plant Library ───────────────────────────────────────────────
+// ─── Products & Services ───────────────────────────────────────────────
 function PlantLibraryPage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
@@ -2897,14 +2897,14 @@ function PlantLibraryPage() {
     <div className="fade-in">
       <div className="page-header">
         <div>
-          <h2>Plant Library</h2>
-          <p>{PLANTS_DB.length} plants in your availability list</p>
+          <h2>Products & Services</h2>
+          <p>{PLANTS_DB.length} items in your products & services library</p>
         </div>
         <button className="btn btn-primary">+ Add Plant</button>
       </div>
       <div className="page-body">
         <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
-          <input className="form-input" style={{ maxWidth: 300 }} placeholder="Search plants..."
+          <input className="form-input" style={{ maxWidth: 300 }} placeholder="Search products & services..."
             value={search} onChange={e => setSearch(e.target.value)} />
           <div className="pill-group">
             {[["all", "All"], ["shrub", "Shrubs"], ["tree", "Trees"], ["perennial", "Perennials"], ["groundcover", "Groundcover"], ["ornamental_grass", "Grasses"]].map(([val, label]) => (
@@ -3263,7 +3263,7 @@ function SettingsPage() {
             <div className="card-body">
               <h3 style={{ fontFamily: "var(--font-display)", marginBottom: 8 }}>Upload Products & Services</h3>
               <p style={{ fontSize: 13, color: "var(--filo-grey)", marginBottom: 16 }}>
-                Upload your nursery availability list, price sheet, or product catalog. FILO will parse it and populate your plant library automatically.
+                Upload your nursery availability list, price sheet, or product catalog. FILO will parse it and populate your products & services library automatically.
               </p>
               <p style={{ fontSize: 12, color: "var(--filo-silver)", marginBottom: 16 }}>
                 Supported formats: CSV (best), Excel (.xlsx), PDF, or plain text. CSV files are parsed instantly. Other formats use AI to extract product data. Include column headers like name, size, price for best results.
