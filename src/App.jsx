@@ -924,7 +924,7 @@ function NewProjectPage() {
             if (!design || designPlants.length === 0) {
               await api.projects.updateStatus(projectId, 'design_generation');
               try {
-                const designResult = await api.projects.generateDesign(projectId, { maxSpecies: project.maxSpecies || 3 });
+                const designResult = await api.projects.generateDesign(projectId, {});
                 const d = designResult.design || designResult;
                 setDesign(d);
                 const plants = designResult.plants || d?.plants || [];
@@ -1777,20 +1777,6 @@ function NewProjectPage() {
                     </div>
                   </div>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label" style={{ fontSize: 12 }}>Number of Plant Species</label>
-                    <div className="pill-group">
-                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
-                        <span key={n} className={cn("pill", (project.maxSpecies || 3) === n && "active")}
-                          onClick={() => updateProject({ maxSpecies: n })} style={{ fontSize: 12, padding: "4px 10px", minWidth: 28, textAlign: "center" }}>{n}</span>
-                      ))}
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--filo-silver)", marginTop: 4 }}>
-                      {(project.maxSpecies || 3) === 1 ? 'Single species — entire bed is one plant type' : `Exactly ${project.maxSpecies || 3} different plant types in the bed`}
-                    </div>
-                  </div>
-                </div>
                 <div className="form-group" style={{ margin: 0, marginBottom: 16 }}>
                   <label className="form-label" style={{ fontSize: 12 }}>Specific Plant Requests</label>
                   <textarea className="form-input" placeholder="e.g. I want red knockout roses along the walkway, hydrangeas by the front door..."
@@ -1809,12 +1795,11 @@ function NewProjectPage() {
                             sun_exposure: project.sun,
                             design_style: project.style,
                             special_requests: project.specialRequests,
-                            max_species: project.maxSpecies || 3,
                             lighting_requested: project.lighting,
                             hardscape_changes: project.hardscape,
                           });
                           await api.projects.updateStatus(projectId, 'design_generation');
-                          const designResult = await api.projects.generateDesign(projectId, { maxSpecies: project.maxSpecies || 3 });
+                          const designResult = await api.projects.generateDesign(projectId, {});
                           const d = designResult.design || designResult;
                           setDesign(d);
                           const plants = designResult.plants || d?.plants || [];
