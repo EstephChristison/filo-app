@@ -1409,10 +1409,10 @@ function NewProjectPage() {
             return canvas.toDataURL('image/png');
           };
           const generateBedEdge = async () => {
-            if (!api || generatingBedEdge) return;
+            if (!api || generatingBedEdge || bedEdgePath.length < 3) return;
             setGeneratingBedEdge(true);
             try {
-              const maskDataUrl = bedEdgePath.length >= 3 ? getBedEdgeMaskDataUrl() : null;
+              const maskDataUrl = getBedEdgeMaskDataUrl();
               const basePhoto = removalPreview || photoUrls[0];
               const result = await api.bedEdgePreview.generate(basePhoto, maskDataUrl, bedEdgeStyle, bedEdgeAdjustment);
               setBedEdgePreview(result.previewUrl);
@@ -1608,11 +1608,11 @@ function NewProjectPage() {
                           )}
                           {bedEdgePath.length === 0 && !bedEdgeDrawing && (
                             <span style={{ fontSize: 12, color: "var(--filo-grey)" }}>
-                              Optional: draw the bed perimeter below for a custom shape
+                              Draw the bed perimeter below, then generate
                             </span>
                           )}
                           <div style={{ flex: 1 }} />
-                          {!bedEdgePreview && (
+                          {bedEdgePath.length > 3 && !bedEdgePreview && (
                             <button className="btn btn-sm" onClick={generateBedEdge} disabled={generatingBedEdge}
                               style={{ background: 'var(--filo-green)', color: '#fff', border: 'none', fontWeight: 600, padding: '8px 20px' }}>
                               {generatingBedEdge ? '⟳ Generating...' : '✨ Update Bed Edge'}
@@ -1663,7 +1663,7 @@ function NewProjectPage() {
                             </svg>
                             {bedEdgePath.length === 0 && !bedEdgeDrawing && (
                               <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", background: "#E97316", color: "#fff", padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, zIndex: 25, pointerEvents: "none" }}>
-                                Draw bed perimeter (optional)
+                                Draw around the full bed perimeter
                               </div>
                             )}
                           </div>
