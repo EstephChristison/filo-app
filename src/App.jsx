@@ -1565,13 +1565,13 @@ function NewProjectPage() {
                   <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label" style={{ fontSize: 12 }}>Number of Plant Species</label>
                     <div className="pill-group">
-                      {[1, 2, 3, 4, 5].map(n => (
+                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
                         <span key={n} className={cn("pill", (project.maxSpecies || 3) === n && "active")}
-                          onClick={() => updateProject({ maxSpecies: n })} style={{ fontSize: 12, padding: "4px 12px" }}>{n}</span>
+                          onClick={() => updateProject({ maxSpecies: n })} style={{ fontSize: 12, padding: "4px 10px", minWidth: 28, textAlign: "center" }}>{n}</span>
                       ))}
                     </div>
                     <div style={{ fontSize: 11, color: "var(--filo-silver)", marginTop: 4 }}>
-                      {(project.maxSpecies || 3) === 1 ? 'Single species — entire bed is one plant type' : `Up to ${project.maxSpecies || 3} different plant types in the bed`}
+                      {(project.maxSpecies || 3) === 1 ? 'Single species — entire bed is one plant type' : `Exactly ${project.maxSpecies || 3} different plant types in the bed`}
                     </div>
                   </div>
                 </div>
