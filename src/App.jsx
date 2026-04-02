@@ -1409,10 +1409,10 @@ function NewProjectPage() {
             return canvas.toDataURL('image/png');
           };
           const generateBedEdge = async () => {
-            if (!api || generatingBedEdge || bedEdgePath.length < 3) return;
+            if (!api || generatingBedEdge) return;
             setGeneratingBedEdge(true);
             try {
-              const maskDataUrl = getBedEdgeMaskDataUrl();
+              const maskDataUrl = bedEdgePath.length >= 3 ? getBedEdgeMaskDataUrl() : null;
               const basePhoto = removalPreview || photoUrls[0];
               const result = await api.bedEdgePreview.generate(basePhoto, maskDataUrl, bedEdgeStyle, bedEdgeAdjustment);
               setBedEdgePreview(result.previewUrl);
@@ -1567,8 +1567,8 @@ function NewProjectPage() {
                     {/* ═══ SUB-STEP B: Bed Edge ═══ */}
                     {bedPrepSubStep === 'bedEdge' && (
                       <>
-                        {/* Edge options row */}
-                        <div style={{ display: "flex", gap: 16, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+                        {/* Edge options row — always visible, independent of drawing */}
+                        <div style={{ display: "flex", gap: 16, marginBottom: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
                           <div>
                             <label style={{ fontSize: 11, fontWeight: 600, color: "var(--filo-charcoal)", display: "block", marginBottom: 4 }}>Edge Style</label>
                             <div className="pill-group">
@@ -1596,27 +1596,38 @@ function NewProjectPage() {
                           </div>
                         </div>
 
-                        {/* Toolbar */}
+                        {/* Generate button — always available (drawing is optional) */}
                         <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--filo-green)" }}>
-                            {bedEdgePath.length > 0 ? '✓ Bed edge drawn' : 'Draw the bed perimeter below'}
-                          </span>
                           {bedEdgePath.length > 0 && (
-                            <button className="btn btn-sm btn-ghost" onClick={() => { setBedEdgePath([]); setBedEdgePreview(null); bedEdgePreviewRef.current = null; try { localStorage.removeItem('filo_bed_edge_preview'); } catch(e){} }}>
-                              Clear & Redraw
-                            </button>
+                            <>
+                              <span style={{ fontSize: 12, fontWeight: 600, color: "#E97316" }}>✓ Bed edge drawn</span>
+                              <button className="btn btn-sm btn-ghost" onClick={() => { setBedEdgePath([]); setBedEdgePreview(null); bedEdgePreviewRef.current = null; try { localStorage.removeItem('filo_bed_edge_preview'); } catch(e){} }}>
+                                Clear & Redraw
+                              </button>
+                            </>
+                          )}
+                          {bedEdgePath.length === 0 && !bedEdgeDrawing && (
+                            <span style={{ fontSize: 12, color: "var(--filo-grey)" }}>
+                              Optional: draw the bed perimeter below for a custom shape
+                            </span>
                           )}
                           <div style={{ flex: 1 }} />
-                          {bedEdgePath.length > 3 && !bedEdgePreview && (
+                          {!bedEdgePreview && (
                             <button className="btn btn-sm" onClick={generateBedEdge} disabled={generatingBedEdge}
                               style={{ background: 'var(--filo-green)', color: '#fff', border: 'none', fontWeight: 600, padding: '8px 20px' }}>
-                              {generatingBedEdge ? '⟳ Generating Edge Preview...' : '✨ Generate Bed Edge Preview'}
+                              {generatingBedEdge ? '⟳ Generating...' : '✨ Update Bed Edge'}
                             </button>
                           )}
                           {bedEdgePreview && (
-                            <button className="btn btn-sm" onClick={() => { setBedEdgePreview(null); bedEdgePreviewRef.current = null; try { localStorage.removeItem('filo_bed_edge_preview'); } catch(e){} }} style={{ fontWeight: 600 }}>
-                              ← Back to Draw
-                            </button>
+                            <>
+                              <button className="btn btn-sm" onClick={() => { setBedEdgePreview(null); bedEdgePreviewRef.current = null; try { localStorage.removeItem('filo_bed_edge_preview'); } catch(e){} }} style={{ fontWeight: 600 }}>
+                                ← Back to Draw
+                              </button>
+                              <button className="btn btn-sm" onClick={generateBedEdge} disabled={generatingBedEdge}
+                                style={{ background: 'var(--filo-green)', color: '#fff', border: 'none', fontWeight: 600, padding: '8px 16px' }}>
+                                {generatingBedEdge ? '⟳ Regenerating...' : '⟳ Regenerate'}
+                              </button>
+                            </>
                           )}
                         </div>
 
@@ -1628,15 +1639,11 @@ function NewProjectPage() {
                               BED EDGE {bedEdgeStyle === 'square' ? '90°' : 'CURVED'}{bedEdgeAdjustment !== 0 ? ` · ${bedEdgeAdjustment > 0 ? '+' : ''}${bedEdgeAdjustment} ft` : ''}
                             </div>
                             <div style={{ position: "absolute", top: 12, right: 12, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "4px 10px", borderRadius: 4, fontSize: 10, fontWeight: 700 }}>FILO AI</div>
-                            <button className="btn btn-sm" onClick={generateBedEdge} disabled={generatingBedEdge}
-                              style={{ position: "absolute", bottom: 12, right: 12, background: "rgba(0,0,0,0.7)", color: "#fff", border: "none", fontSize: 11 }}>
-                              {generatingBedEdge ? "Regenerating..." : "Regenerate"}
-                            </button>
                           </div>
                         ) : (
                           <div style={{
                             position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 12,
-                            border: '2px solid var(--filo-green)', cursor: 'crosshair', userSelect: "none",
+                            border: '2px solid #E97316', cursor: 'crosshair', userSelect: "none",
                           }}>
                             <img src={removalPreview || photoUrls[0]} alt="Property" style={{ width: "100%", display: "block", pointerEvents: "none" }} draggable={false} />
                             <svg
@@ -1647,16 +1654,16 @@ function NewProjectPage() {
                             >
                               {bedEdgePath.length > 2 && (
                                 <polygon points={bedEdgePath.map(p => `${p.x},${p.y}`).join(' ')}
-                                  fill="rgba(45,106,79,0.15)" stroke="#2D6A4F" strokeWidth="3" />
+                                  fill="rgba(233,115,22,0.15)" stroke="#E97316" strokeWidth="3" />
                               )}
                               {bedEdgeCurrentPath.length > 1 && (
                                 <polyline points={bedEdgeCurrentPath.map(p => `${p.x},${p.y}`).join(' ')}
-                                  fill="none" stroke="#2D6A4F" strokeWidth="3" />
+                                  fill="none" stroke="#E97316" strokeWidth="3" />
                               )}
                             </svg>
                             {bedEdgePath.length === 0 && !bedEdgeDrawing && (
-                              <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", background: "var(--filo-green)", color: "#fff", padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, zIndex: 25, pointerEvents: "none" }}>
-                                Draw around the full bed perimeter
+                              <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", background: "#E97316", color: "#fff", padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, zIndex: 25, pointerEvents: "none" }}>
+                                Draw bed perimeter (optional)
                               </div>
                             )}
                           </div>
