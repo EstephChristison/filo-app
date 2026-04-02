@@ -1320,13 +1320,26 @@ function NewProjectPage() {
             if (e.type === 'touchstart') e.preventDefault();
             const pt = getDrawPoint(e);
             if (!pt) return;
-            isDrawingRef.current = true;
-            setIsDrawing(true);
-            currentPathRef.current = [pt];
-            setCurrentPath([pt]);
+            if (drawToolMode === 'polygon') {
+              // Polygon mode: click to place points, click near first point to close
+              if (polygonPoints.length >= 3) {
+                const first = polygonPoints[0];
+                if (Math.sqrt((pt.x - first.x) ** 2 + (pt.y - first.y) ** 2) < 30) {
+                  setDrawPaths(prev => [...prev, { points: [...polygonPoints], type: 'remove' }]);
+                  setPolygonPoints([]);
+                  return;
+                }
+              }
+              setPolygonPoints(prev => [...prev, pt]);
+            } else {
+              isDrawingRef.current = true;
+              setIsDrawing(true);
+              currentPathRef.current = [pt];
+              setCurrentPath([pt]);
+            }
           };
           const moveDraw = (e) => {
-            if (!isDrawingRef.current || !drawModeRef.current) return;
+            if (drawToolMode !== 'freehand' || !isDrawingRef.current || !drawModeRef.current) return;
             if (e.type === 'touchmove') e.preventDefault();
             const pt = getDrawPoint(e);
             if (!pt) return;
@@ -1334,6 +1347,7 @@ function NewProjectPage() {
             setCurrentPath(currentPathRef.current);
           };
           const endDraw = () => {
+            if (drawToolMode !== 'freehand') return;
             const finalPath = currentPathRef.current;
             if (finalPath.length > 3) setDrawPaths(prev => [...prev, { points: finalPath, type: 'remove' }]);
             isDrawingRef.current = false;
@@ -1499,9 +1513,18 @@ function NewProjectPage() {
                         <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
                           <button className={`btn btn-sm ${drawMode === 'remove' ? '' : 'btn-ghost'}`}
                             style={drawMode === 'remove' ? { background: '#DC2626', color: '#fff', border: 'none', fontWeight: 600 } : { fontWeight: 600 }}
-                            onClick={() => { const next = drawMode === 'remove' ? false : 'remove'; drawModeRef.current = next; setDrawMode(next); }}>
+                            onClick={() => { const next = drawMode === 'remove' ? false : 'remove'; drawModeRef.current = next; setDrawMode(next); setPolygonPoints([]); }}>
                             {drawMode === 'remove' ? '🖌 Drawing — Circle plants to remove' : '🖌 Start Drawing'}
                           </button>
+                          <div className="pill-group" style={{ marginLeft: 4 }}>
+                            <span className={`pill ${drawToolMode === 'freehand' ? 'active' : ''}`}
+                              onClick={() => { setDrawToolMode('freehand'); setPolygonPoints([]); }} style={{ fontSize: 11, padding: "3px 10px" }}>Freehand</span>
+                            <span className={`pill ${drawToolMode === 'polygon' ? 'active' : ''}`}
+                              onClick={() => { setDrawToolMode('polygon'); setPolygonPoints([]); }} style={{ fontSize: 11, padding: "3px 10px" }}>Polygon</span>
+                          </div>
+                          {polygonPoints.length > 0 && (
+                            <button className="btn btn-sm btn-ghost" onClick={() => setPolygonPoints([])}>Undo Points</button>
+                          )}
                           {drawPaths.length > 0 && (
                             <>
                               <button className="btn btn-sm btn-ghost" onClick={() => { setDrawPaths(prev => prev.slice(0, -1)); setRemovalPreview(null); removalPreviewRef.current = null; try { localStorage.removeItem('filo_removal_preview'); } catch(e){} }}>Undo</button>
@@ -1557,14 +1580,24 @@ function NewProjectPage() {
                                     return <polygon key={i} points={pts.map(p => `${p.x},${p.y}`).join(' ')}
                                       fill="rgba(220,38,38,0.3)" stroke="#DC2626" strokeWidth="3" strokeDasharray="8,4" />;
                                   })}
-                                  {currentPath.length > 1 && (
+                                  {currentPath.length > 1 && drawToolMode === 'freehand' && (
                                     <polyline points={currentPath.map(p => `${p.x},${p.y}`).join(' ')}
                                       fill="none" stroke="#DC2626" strokeWidth="3" strokeDasharray="6,3" />
+                                  )}
+                                  {polygonPoints.length > 0 && drawToolMode === 'polygon' && drawMode === 'remove' && (
+                                    <>
+                                      <polyline points={polygonPoints.map(p => `${p.x},${p.y}`).join(' ')}
+                                        fill={polygonPoints.length > 2 ? "rgba(220,38,38,0.15)" : "none"} stroke="#DC2626" strokeWidth="3" strokeDasharray="6,3" />
+                                      {polygonPoints.map((p, i) => (
+                                        <circle key={i} cx={p.x} cy={p.y} r={i === 0 ? 12 : 6}
+                                          fill={i === 0 ? "#DC2626" : "#fff"} stroke="#DC2626" strokeWidth="2" />
+                                      ))}
+                                    </>
                                   )}
                                 </svg>
                                 {drawMode === 'remove' && (
                                   <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", background: "#DC2626", color: "#fff", padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, zIndex: 25, pointerEvents: "none" }}>
-                                    Draw around plants to remove
+                                    {drawToolMode === 'polygon' ? 'Click to place points — click first point to close' : 'Draw around plants to remove'}
                                   </div>
                                 )}
                                 {!drawMode && drawPaths.length === 0 && (
