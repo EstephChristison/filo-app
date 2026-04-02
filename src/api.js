@@ -78,7 +78,7 @@ async function apiFetch(path, options = {}) {
   try {
     // 3 minute timeout for AI image endpoints (Gemini can be slow)
     const controller = new AbortController();
-    const timeoutMs = path.includes('removal-preview') || path.includes('bed-edge-preview') || path.includes('design-render') || path.includes('generate-design') || path.includes('design-adjust') ? 180000 : 30000;
+    const timeoutMs = path.includes('removal-preview') || path.includes('bed-edge-preview') || path.includes('design-render') || path.includes('generate-design') || path.includes('design-adjust') || path.includes('design-hardscape') || path.includes('design-night-mode') ? 180000 : 30000;
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     response = await fetch(url, {
       ...options,
@@ -354,10 +354,14 @@ export const plants = {
     return apiFetch('/plants', { method: 'POST', body: plant });
   },
 
-  async importList(file) {
+  async import(file) {
     const formData = new FormData();
     formData.append('file', file);
     return apiFetch('/plants/import', { method: 'POST', body: formData });
+  },
+
+  async importList(file) {
+    return plants.import(file);
   },
 };
 

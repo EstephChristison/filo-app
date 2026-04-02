@@ -752,6 +752,10 @@ function NewProjectPage() {
   const currentPathRef = useRef([]);
   const [removalPreview, setRemovalPreview] = useState(null);
   const removalPreviewRef = useRef(null); // Ref mirror — always current, never stale in closures
+  // Drawing tool mode — freehand or polygon (shared across all draw tools)
+  const [drawToolMode, setDrawToolMode] = useState('freehand'); // 'freehand' | 'polygon'
+  const [polygonPoints, setPolygonPoints] = useState([]); // current polygon being drawn
+
   // Bed Edge tool state
   const [bedPrepSubStep, setBedPrepSubStep] = useState('removal'); // 'removal' | 'bedEdge'
   const [bedEdgePath, setBedEdgePath] = useState([]);
@@ -1613,6 +1617,17 @@ function NewProjectPage() {
                           </div>
                         </div>
 
+                        {/* Draw mode toggle */}
+                        <div style={{ marginBottom: 12 }}>
+                          <label style={{ fontSize: 11, fontWeight: 600, color: "var(--filo-charcoal)", display: "block", marginBottom: 4 }}>Draw Mode</label>
+                          <div className="pill-group">
+                            <span className={`pill ${drawToolMode === 'freehand' ? 'active' : ''}`}
+                              onClick={() => { setDrawToolMode('freehand'); setPolygonPoints([]); }} style={{ fontSize: 12, padding: "4px 12px" }}>Freehand</span>
+                            <span className={`pill ${drawToolMode === 'polygon' ? 'active' : ''}`}
+                              onClick={() => { setDrawToolMode('polygon'); setPolygonPoints([]); }} style={{ fontSize: 12, padding: "4px 12px" }}>Polygon</span>
+                          </div>
+                        </div>
+
                         {/* Generate button — always available (drawing is optional) */}
                         <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
                           {bedEdgePath.length > 0 && (
@@ -1666,21 +1681,73 @@ function NewProjectPage() {
                             <svg
                               style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", zIndex: 5 }}
                               viewBox="0 0 1000 1000" preserveAspectRatio="none"
-                              onMouseDown={startBedEdgeDraw} onMouseMove={moveBedEdgeDraw} onMouseUp={endBedEdgeDraw} onMouseLeave={endBedEdgeDraw}
-                              onTouchStart={startBedEdgeDraw} onTouchMove={moveBedEdgeDraw} onTouchEnd={endBedEdgeDraw}
+                              onMouseDown={(e) => {
+                                if (drawToolMode === 'polygon') {
+                                  const pt = getBedEdgePoint(e);
+                                  if (!pt) return;
+                                  // If clicking near first point and we have 3+, close polygon
+                                  if (polygonPoints.length >= 3) {
+                                    const first = polygonPoints[0];
+                                    const dist = Math.sqrt((pt.x - first.x) ** 2 + (pt.y - first.y) ** 2);
+                                    if (dist < 30) {
+                                      setBedEdgePath([...polygonPoints]);
+                                      setPolygonPoints([]);
+                                      return;
+                                    }
+                                  }
+                                  setPolygonPoints(prev => [...prev, pt]);
+                                } else {
+                                  startBedEdgeDraw(e);
+                                }
+                              }}
+                              onMouseMove={drawToolMode === 'freehand' ? moveBedEdgeDraw : undefined}
+                              onMouseUp={drawToolMode === 'freehand' ? endBedEdgeDraw : undefined}
+                              onMouseLeave={drawToolMode === 'freehand' ? endBedEdgeDraw : undefined}
+                              onTouchStart={(e) => {
+                                if (drawToolMode === 'polygon') {
+                                  e.preventDefault();
+                                  const pt = getBedEdgePoint(e);
+                                  if (!pt) return;
+                                  if (polygonPoints.length >= 3) {
+                                    const first = polygonPoints[0];
+                                    const dist = Math.sqrt((pt.x - first.x) ** 2 + (pt.y - first.y) ** 2);
+                                    if (dist < 30) {
+                                      setBedEdgePath([...polygonPoints]);
+                                      setPolygonPoints([]);
+                                      return;
+                                    }
+                                  }
+                                  setPolygonPoints(prev => [...prev, pt]);
+                                } else {
+                                  startBedEdgeDraw(e);
+                                }
+                              }}
+                              onTouchMove={drawToolMode === 'freehand' ? moveBedEdgeDraw : undefined}
+                              onTouchEnd={drawToolMode === 'freehand' ? endBedEdgeDraw : undefined}
                             >
                               {bedEdgePath.length > 2 && (
                                 <polygon points={bedEdgePath.map(p => `${p.x},${p.y}`).join(' ')}
                                   fill="rgba(233,115,22,0.15)" stroke="#E97316" strokeWidth="3" />
                               )}
-                              {bedEdgeCurrentPath.length > 1 && (
+                              {bedEdgeCurrentPath.length > 1 && drawToolMode === 'freehand' && (
                                 <polyline points={bedEdgeCurrentPath.map(p => `${p.x},${p.y}`).join(' ')}
                                   fill="none" stroke="#E97316" strokeWidth="3" />
                               )}
+                              {/* Polygon mode: show points and connecting lines */}
+                              {polygonPoints.length > 0 && drawToolMode === 'polygon' && bedEdgePath.length === 0 && (
+                                <>
+                                  <polyline points={polygonPoints.map(p => `${p.x},${p.y}`).join(' ')}
+                                    fill={polygonPoints.length > 2 ? "rgba(233,115,22,0.1)" : "none"} stroke="#E97316" strokeWidth="3" />
+                                  {polygonPoints.map((p, i) => (
+                                    <circle key={i} cx={p.x} cy={p.y} r={i === 0 ? 12 : 6}
+                                      fill={i === 0 ? "#E97316" : "#fff"} stroke="#E97316" strokeWidth="2" />
+                                  ))}
+                                </>
+                              )}
                             </svg>
-                            {bedEdgePath.length === 0 && !bedEdgeDrawing && (
+                            {bedEdgePath.length === 0 && !bedEdgeDrawing && polygonPoints.length === 0 && (
                               <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", background: "#E97316", color: "#fff", padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, zIndex: 25, pointerEvents: "none" }}>
-                                Draw around the full bed perimeter
+                                {drawToolMode === 'polygon' ? 'Click to place points — click first point to close' : 'Draw around the full bed perimeter'}
                               </div>
                             )}
                           </div>
@@ -2157,15 +2224,24 @@ function NewProjectPage() {
                         Draw on the design to outline where you want hardscape changes, then describe the material.
                       </p>
                       <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-                        <button className="btn btn-sm" onClick={() => setHardscapeDrawing(!hardscapeDrawing)}
+                        <button className="btn btn-sm" onClick={() => { setHardscapeDrawing(!hardscapeDrawing); setPolygonPoints([]); }}
                           style={{ background: hardscapeDrawing ? '#E97316' : 'var(--filo-green)', color: '#fff', border: 'none', fontWeight: 600 }}>
                           {hardscapeDrawing ? '✓ Drawing Mode ON' : '✏️ Start Drawing'}
                         </button>
+                        <div className="pill-group" style={{ marginLeft: 4 }}>
+                          <span className={`pill ${drawToolMode === 'freehand' ? 'active' : ''}`}
+                            onClick={() => { setDrawToolMode('freehand'); setPolygonPoints([]); }} style={{ fontSize: 11, padding: "3px 10px" }}>Freehand</span>
+                          <span className={`pill ${drawToolMode === 'polygon' ? 'active' : ''}`}
+                            onClick={() => { setDrawToolMode('polygon'); setPolygonPoints([]); }} style={{ fontSize: 11, padding: "3px 10px" }}>Polygon</span>
+                        </div>
                         {hardscapePaths.length > 0 && (
                           <button className="btn btn-sm btn-ghost" onClick={() => setHardscapePaths([])}>Clear Drawing</button>
                         )}
+                        {polygonPoints.length > 0 && (
+                          <button className="btn btn-sm btn-ghost" onClick={() => setPolygonPoints([])}>Undo Points</button>
+                        )}
                       </div>
-                      <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden", border: hardscapeDrawing ? '2px solid #E97316' : '2px solid transparent', cursor: hardscapeDrawing ? 'crosshair' : 'default' }}>
+                      <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden", border: hardscapeDrawing ? '2px solid #3B82F6' : '2px solid transparent', cursor: hardscapeDrawing ? 'crosshair' : 'default' }}>
                         <img src={designRenderUrl} alt="Design" style={{ width: "100%", display: "block", pointerEvents: "none" }} draggable={false} />
                         <svg
                           style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", zIndex: 5 }}
@@ -2174,18 +2250,31 @@ function NewProjectPage() {
                             if (!hardscapeDrawing) return;
                             const svg = e.currentTarget; const rect = svg.getBoundingClientRect();
                             const pt = { x: (e.clientX - rect.left) / rect.width * 1000, y: (e.clientY - rect.top) / rect.height * 1000 };
-                            hardscapeDrawingRef.current = true;
-                            hardscapeCurrentPathRef.current = [pt];
-                            setHardscapeCurrentPath([pt]);
+                            if (drawToolMode === 'polygon') {
+                              if (polygonPoints.length >= 3) {
+                                const first = polygonPoints[0];
+                                if (Math.sqrt((pt.x - first.x) ** 2 + (pt.y - first.y) ** 2) < 30) {
+                                  setHardscapePaths(prev => [...prev, [...polygonPoints]]);
+                                  setPolygonPoints([]);
+                                  return;
+                                }
+                              }
+                              setPolygonPoints(prev => [...prev, pt]);
+                            } else {
+                              hardscapeDrawingRef.current = true;
+                              hardscapeCurrentPathRef.current = [pt];
+                              setHardscapeCurrentPath([pt]);
+                            }
                           }}
                           onMouseMove={(e) => {
-                            if (!hardscapeDrawingRef.current) return;
+                            if (drawToolMode !== 'freehand' || !hardscapeDrawingRef.current) return;
                             const svg = e.currentTarget; const rect = svg.getBoundingClientRect();
                             const pt = { x: (e.clientX - rect.left) / rect.width * 1000, y: (e.clientY - rect.top) / rect.height * 1000 };
                             hardscapeCurrentPathRef.current = [...hardscapeCurrentPathRef.current, pt];
                             setHardscapeCurrentPath(hardscapeCurrentPathRef.current);
                           }}
                           onMouseUp={() => {
+                            if (drawToolMode !== 'freehand') return;
                             const finalPath = hardscapeCurrentPathRef.current;
                             if (finalPath.length > 3) setHardscapePaths(prev => [...prev, finalPath]);
                             hardscapeDrawingRef.current = false;
@@ -2193,7 +2282,7 @@ function NewProjectPage() {
                             setHardscapeCurrentPath([]);
                           }}
                           onMouseLeave={() => {
-                            if (!hardscapeDrawingRef.current) return;
+                            if (drawToolMode !== 'freehand' || !hardscapeDrawingRef.current) return;
                             const finalPath = hardscapeCurrentPathRef.current;
                             if (finalPath.length > 3) setHardscapePaths(prev => [...prev, finalPath]);
                             hardscapeDrawingRef.current = false;
@@ -2205,12 +2294,24 @@ function NewProjectPage() {
                             e.preventDefault();
                             const svg = e.currentTarget; const rect = svg.getBoundingClientRect();
                             const pt = { x: (e.touches[0].clientX - rect.left) / rect.width * 1000, y: (e.touches[0].clientY - rect.top) / rect.height * 1000 };
-                            hardscapeDrawingRef.current = true;
-                            hardscapeCurrentPathRef.current = [pt];
-                            setHardscapeCurrentPath([pt]);
+                            if (drawToolMode === 'polygon') {
+                              if (polygonPoints.length >= 3) {
+                                const first = polygonPoints[0];
+                                if (Math.sqrt((pt.x - first.x) ** 2 + (pt.y - first.y) ** 2) < 30) {
+                                  setHardscapePaths(prev => [...prev, [...polygonPoints]]);
+                                  setPolygonPoints([]);
+                                  return;
+                                }
+                              }
+                              setPolygonPoints(prev => [...prev, pt]);
+                            } else {
+                              hardscapeDrawingRef.current = true;
+                              hardscapeCurrentPathRef.current = [pt];
+                              setHardscapeCurrentPath([pt]);
+                            }
                           }}
                           onTouchMove={(e) => {
-                            if (!hardscapeDrawingRef.current) return;
+                            if (drawToolMode !== 'freehand' || !hardscapeDrawingRef.current) return;
                             e.preventDefault();
                             const svg = e.currentTarget; const rect = svg.getBoundingClientRect();
                             const pt = { x: (e.touches[0].clientX - rect.left) / rect.width * 1000, y: (e.touches[0].clientY - rect.top) / rect.height * 1000 };
@@ -2218,6 +2319,7 @@ function NewProjectPage() {
                             setHardscapeCurrentPath(hardscapeCurrentPathRef.current);
                           }}
                           onTouchEnd={() => {
+                            if (drawToolMode !== 'freehand') return;
                             const finalPath = hardscapeCurrentPathRef.current;
                             if (finalPath.length > 3) setHardscapePaths(prev => [...prev, finalPath]);
                             hardscapeDrawingRef.current = false;
@@ -2229,12 +2331,22 @@ function NewProjectPage() {
                             <polygon key={i} points={path.map(p => `${p.x},${p.y}`).join(' ')}
                               fill="rgba(59,130,246,0.2)" stroke="#3B82F6" strokeWidth="3" />
                           ))}
-                          {hardscapeCurrentPath.length > 1 && (
+                          {hardscapeCurrentPath.length > 1 && drawToolMode === 'freehand' && (
                             <polyline points={hardscapeCurrentPath.map(p => `${p.x},${p.y}`).join(' ')}
                               fill="none" stroke="#3B82F6" strokeWidth="3" />
                           )}
+                          {polygonPoints.length > 0 && drawToolMode === 'polygon' && (
+                            <>
+                              <polyline points={polygonPoints.map(p => `${p.x},${p.y}`).join(' ')}
+                                fill={polygonPoints.length > 2 ? "rgba(59,130,246,0.1)" : "none"} stroke="#3B82F6" strokeWidth="3" />
+                              {polygonPoints.map((p, i) => (
+                                <circle key={i} cx={p.x} cy={p.y} r={i === 0 ? 12 : 6}
+                                  fill={i === 0 ? "#3B82F6" : "#fff"} stroke="#3B82F6" strokeWidth="2" />
+                              ))}
+                            </>
+                          )}
                         </svg>
-                        {hardscapeDrawing && hardscapePaths.length === 0 && (
+                        {hardscapeDrawing && hardscapePaths.length === 0 && polygonPoints.length === 0 && (
                           <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", background: "#3B82F6", color: "#fff", padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, zIndex: 25, pointerEvents: "none" }}>
                             Draw around the hardscape area
                           </div>
