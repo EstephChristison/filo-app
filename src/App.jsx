@@ -1567,32 +1567,14 @@ function NewProjectPage() {
                     {/* ═══ SUB-STEP B: Bed Edge ═══ */}
                     {bedPrepSubStep === 'bedEdge' && (
                       <>
-                        {/* Edge options row — always visible, independent of drawing */}
-                        <div style={{ display: "flex", gap: 16, marginBottom: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
-                          <div>
-                            <label style={{ fontSize: 11, fontWeight: 600, color: "var(--filo-charcoal)", display: "block", marginBottom: 4 }}>Edge Style</label>
-                            <div className="pill-group">
-                              <span className={`pill ${bedEdgeStyle === 'rounded' ? 'active' : ''}`}
-                                onClick={() => setBedEdgeStyle('rounded')} style={{ fontSize: 12, padding: "4px 12px" }}>Rounded / Curved</span>
-                              <span className={`pill ${bedEdgeStyle === 'square' ? 'active' : ''}`}
-                                onClick={() => setBedEdgeStyle('square')} style={{ fontSize: 12, padding: "4px 12px" }}>Square 90°</span>
-                            </div>
-                          </div>
-                          <div>
-                            <label style={{ fontSize: 11, fontWeight: 600, color: "var(--filo-charcoal)", display: "block", marginBottom: 4 }}>
-                              Adjust Bed Size: <strong>{bedEdgeAdjustment === 0 ? 'No change' : bedEdgeAdjustment > 0 ? `Expand +${bedEdgeAdjustment} ft` : `Shrink ${bedEdgeAdjustment} ft`}</strong>
-                            </label>
-                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                              {[-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10].map(n => (
-                                <span key={n} className={`pill ${bedEdgeAdjustment === n ? 'active' : ''}`}
-                                  onClick={() => setBedEdgeAdjustment(n)}
-                                  style={{ fontSize: 10, padding: "3px 6px", minWidth: 24, textAlign: "center",
-                                    background: bedEdgeAdjustment === n ? (n < 0 ? '#DC2626' : n > 0 ? 'var(--filo-green)' : 'var(--filo-charcoal)') : undefined,
-                                    color: bedEdgeAdjustment === n ? '#fff' : undefined }}>
-                                  {n === 0 ? '0' : n > 0 ? `+${n}'` : `${n}'`}
-                                </span>
-                              ))}
-                            </div>
+                        {/* Edge style option */}
+                        <div style={{ marginBottom: 16 }}>
+                          <label style={{ fontSize: 11, fontWeight: 600, color: "var(--filo-charcoal)", display: "block", marginBottom: 4 }}>Edge Style</label>
+                          <div className="pill-group">
+                            <span className={`pill ${bedEdgeStyle === 'rounded' ? 'active' : ''}`}
+                              onClick={() => setBedEdgeStyle('rounded')} style={{ fontSize: 12, padding: "4px 12px" }}>Rounded / Curved</span>
+                            <span className={`pill ${bedEdgeStyle === 'square' ? 'active' : ''}`}
+                              onClick={() => setBedEdgeStyle('square')} style={{ fontSize: 12, padding: "4px 12px" }}>Square 90°</span>
                           </div>
                         </div>
 
