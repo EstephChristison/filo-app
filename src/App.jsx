@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
+import { plants as plantsApi } from "./api.js";
 
 // ═══════════════════════════════════════════════════════════════════
 // FILO — AI-Powered Landscape Design Platform
@@ -2885,7 +2886,6 @@ function NewProjectPage() {
 
 // ─── Products & Services ───────────────────────────────────────────────
 function PlantLibraryPage() {
-  const { apiRef } = useApp();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -2894,9 +2894,7 @@ function PlantLibraryPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const api = apiRef.current;
-        if (!api) return;
-        const result = await api.plants.list();
+        const result = await plantsApi.list();
         setProducts(Array.isArray(result) ? result : result.plants || []);
       } catch (err) {
         console.error('Failed to load products:', err.message);
@@ -2923,10 +2921,8 @@ function PlantLibraryPage() {
         <button className="btn btn-primary" onClick={() => {
           const name = prompt('Product/plant name:');
           if (!name?.trim()) return;
-          const api = apiRef.current;
-          if (!api) return;
-          api.plants.create({ common_name: name.trim() }).then(() => {
-            api.plants.list().then(r => setProducts(Array.isArray(r) ? r : r.plants || []));
+          plantsApi.create({ common_name: name.trim() }).then(() => {
+            plantsApi.list().then(r => setProducts(Array.isArray(r) ? r : r.plants || []));
           }).catch(err => alert('Failed: ' + err.message));
         }}>+ Add Product</button>
       </div>
