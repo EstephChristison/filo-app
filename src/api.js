@@ -442,6 +442,48 @@ export const designAdjust = {
 };
 
 // ═══════════════════════════════════════════════════════════════════
+// NIGHT MODE (Gemini — nighttime render with landscape lighting)
+// ═══════════════════════════════════════════════════════════════════
+
+export const nightMode = {
+  async generate(renderDataUrl) {
+    return apiFetch('/design-night-mode', {
+      method: 'POST',
+      body: { renderDataUrl },
+    });
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// HARDSCAPE (Gemini — draw + apply hardscape changes)
+// ═══════════════════════════════════════════════════════════════════
+
+export const hardscape = {
+  async apply(renderDataUrl, maskDataUrl, prompt) {
+    return apiFetch('/design-hardscape', {
+      method: 'POST',
+      body: { renderDataUrl, maskDataUrl, prompt },
+    });
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// SAVED PROMPTS (user-created reusable design prompts)
+// ═══════════════════════════════════════════════════════════════════
+
+export const savedPrompts = {
+  async list() {
+    return apiFetch('/saved-prompts');
+  },
+  async create(name, prompt) {
+    return apiFetch('/saved-prompts', { method: 'POST', body: { name, prompt } });
+  },
+  async remove(id) {
+    return apiFetch(`/saved-prompts/${id}`, { method: 'DELETE' });
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════
 // DESIGNS
 // ═══════════════════════════════════════════════════════════════════
 

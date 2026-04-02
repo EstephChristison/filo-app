@@ -769,6 +769,16 @@ function NewProjectPage() {
   const [adjustPrompt, setAdjustPrompt] = useState('');
   const [adjusting, setAdjusting] = useState(false);
   const [adjustRadius, setAdjustRadius] = useState(15); // % of image width
+  const [nightModeUrl, setNightModeUrl] = useState(null);
+  const [generatingNightMode, setGeneratingNightMode] = useState(false);
+  const [hardscapeDrawing, setHardscapeDrawing] = useState(false);
+  const [hardscapePaths, setHardscapePaths] = useState([]);
+  const [hardscapeCurrentPath, setHardscapeCurrentPath] = useState([]);
+  const hardscapeDrawingRef = useRef(false);
+  const hardscapeCurrentPathRef = useRef([]);
+  const [savedPromptsList, setSavedPromptsList] = useState([]);
+  const [showSavePromptForm, setShowSavePromptForm] = useState(false);
+  const [newPromptName, setNewPromptName] = useState('');
   const [generatingPreview, setGeneratingPreview] = useState(false);
   const [generatingRender, setGeneratingRender] = useState(false);
   const removalCanvasRef = useRef(null);
@@ -790,6 +800,15 @@ function NewProjectPage() {
   useEffect(() => {
     import("./api.js").then(mod => { apiRef.current = mod.default; setApiReady(true); }).catch(console.error);
   }, []);
+
+  // ─── Load saved prompts when reaching AI Design step ───
+  useEffect(() => {
+    if (step === 5 && apiRef.current) {
+      apiRef.current.savedPrompts.list().then(res => {
+        setSavedPromptsList(res.prompts || []);
+      }).catch(() => {});
+    }
+  }, [step]);
 
   // ─── Checkpoint: auto-save wizard state on every step change ───
   useEffect(() => {
@@ -1757,9 +1776,60 @@ function NewProjectPage() {
                 </div>
                 <div className="form-group" style={{ margin: 0, marginBottom: 16 }}>
                   <label className="form-label" style={{ fontSize: 12 }}>Specific Plant Requests</label>
+                  {/* Saved Prompts dropdown */}
+                  {savedPromptsList.length > 0 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <select className="form-input" style={{ fontSize: 12, padding: "6px 10px" }}
+                        value="" onChange={e => {
+                          if (e.target.value) {
+                            const sp = savedPromptsList.find(p => String(p.id) === e.target.value);
+                            if (sp) updateProject({ specialRequests: (project.specialRequests ? project.specialRequests + '\n' : '') + sp.prompt });
+                          }
+                        }}>
+                        <option value="">📋 Insert saved prompt...</option>
+                        {savedPromptsList.map(sp => (
+                          <option key={sp.id} value={sp.id}>{sp.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <textarea className="form-input" placeholder="e.g. I want red knockout roses along the walkway, hydrangeas by the front door..."
                     value={project.specialRequests} onChange={e => updateProject({ specialRequests: e.target.value })}
                     style={{ minHeight: 60, fontSize: 13 }} />
+                  {/* Save current prompt / manage prompts */}
+                  <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    {!showSavePromptForm ? (
+                      <button className="btn btn-sm btn-ghost" style={{ fontSize: 11 }}
+                        onClick={() => { setShowSavePromptForm(true); setNewPromptName(''); }}
+                        disabled={!project.specialRequests?.trim()}>
+                        💾 Save as Prompt
+                      </button>
+                    ) : (
+                      <>
+                        <input className="form-input" placeholder="Prompt name..." value={newPromptName}
+                          onChange={e => setNewPromptName(e.target.value)}
+                          style={{ fontSize: 12, padding: "4px 8px", width: 180 }} />
+                        <button className="btn btn-sm" style={{ fontSize: 11, background: 'var(--filo-green)', color: '#fff', border: 'none' }}
+                          disabled={!newPromptName.trim()}
+                          onClick={async () => {
+                            try {
+                              const api = apiRef.current;
+                              const saved = await api.savedPrompts.create(newPromptName.trim(), project.specialRequests.trim());
+                              setSavedPromptsList(prev => [saved, ...prev]);
+                              setShowSavePromptForm(false);
+                              setNewPromptName('');
+                            } catch (err) { alert('Failed to save prompt: ' + err.message); }
+                          }}>Save</button>
+                        <button className="btn btn-sm btn-ghost" style={{ fontSize: 11 }}
+                          onClick={() => setShowSavePromptForm(false)}>Cancel</button>
+                      </>
+                    )}
+                    {savedPromptsList.length > 0 && (
+                      <span style={{ fontSize: 11, color: "var(--filo-grey)", marginLeft: "auto" }}>
+                        {savedPromptsList.length} saved prompt{savedPromptsList.length !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 {/* Generate AI Design button */}
                 {!design && !loading && (
@@ -2027,6 +2097,195 @@ function NewProjectPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Night Mode — landscape lighting visualization */}
+                {designRenderUrl && (
+                  <div className="card" style={{ marginBottom: 24 }}>
+                    <div className="card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Night Mode — Landscape Lighting</h3>
+                      <button className="btn btn-sm" onClick={async () => {
+                        setGeneratingNightMode(true);
+                        try {
+                          const api = apiRef.current;
+                          const result = await api.nightMode.generate(designRenderUrl);
+                          setNightModeUrl(result.renderUrl);
+                        } catch (err) {
+                          console.error('Night mode failed:', err.message);
+                          alert('Night mode generation failed: ' + err.message);
+                        } finally { setGeneratingNightMode(false); }
+                      }} disabled={generatingNightMode}
+                        style={{ background: '#1e293b', color: '#fbbf24', border: 'none', fontWeight: 600, padding: '8px 20px' }}>
+                        {generatingNightMode ? '⟳ Generating...' : nightModeUrl ? '⟳ Regenerate Night View' : '🌙 Generate Night View'}
+                      </button>
+                    </div>
+                    <div className="card-body">
+                      {generatingNightMode ? (
+                        <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+                          <img src={designRenderUrl} alt="Design" style={{ width: "100%", display: "block", filter: "brightness(0.3) saturate(0.5)" }} />
+                          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
+                            <div style={{ width: 48, height: 48, border: "4px solid rgba(255,255,255,0.3)", borderTopColor: "#fbbf24", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+                            <span style={{ color: "#fbbf24", fontSize: 16, fontWeight: 700, textShadow: "0 2px 8px rgba(0,0,0,0.7)" }}>Generating Night View...</span>
+                            <span style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}>Adding landscape lighting to your design</span>
+                          </div>
+                        </div>
+                      ) : nightModeUrl ? (
+                        <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+                          <img src={nightModeUrl} alt="Night Mode Design" style={{ width: "100%", display: "block" }} />
+                          <div style={{ position: "absolute", top: 12, left: 12, background: "#1e293b", color: "#fbbf24", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
+                            NIGHT VIEW — LANDSCAPE LIGHTING
+                          </div>
+                          <div style={{ position: "absolute", top: 12, right: 12, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "4px 10px", borderRadius: 4, fontSize: 10, fontWeight: 700 }}>FILO AI</div>
+                        </div>
+                      ) : (
+                        <p style={{ color: "var(--filo-grey)", fontSize: 13, margin: 0 }}>
+                          Generate a nighttime version of your design with professional landscape lighting — up-lights, path lights, accent lighting, and moonlight effects.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Hardscape Draw Tool */}
+                {designRenderUrl && (
+                  <div className="card" style={{ marginBottom: 24 }}>
+                    <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Hardscape Tool</h3></div>
+                    <div className="card-body">
+                      <p style={{ color: "var(--filo-grey)", fontSize: 13, marginTop: 0, marginBottom: 12 }}>
+                        Draw on the design to outline where you want hardscape changes, then describe the material.
+                      </p>
+                      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+                        <button className="btn btn-sm" onClick={() => setHardscapeDrawing(!hardscapeDrawing)}
+                          style={{ background: hardscapeDrawing ? '#E97316' : 'var(--filo-green)', color: '#fff', border: 'none', fontWeight: 600 }}>
+                          {hardscapeDrawing ? '✓ Drawing Mode ON' : '✏️ Start Drawing'}
+                        </button>
+                        {hardscapePaths.length > 0 && (
+                          <button className="btn btn-sm btn-ghost" onClick={() => setHardscapePaths([])}>Clear Drawing</button>
+                        )}
+                      </div>
+                      <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden", border: hardscapeDrawing ? '2px solid #E97316' : '2px solid transparent', cursor: hardscapeDrawing ? 'crosshair' : 'default' }}>
+                        <img src={designRenderUrl} alt="Design" style={{ width: "100%", display: "block", pointerEvents: "none" }} draggable={false} />
+                        <svg
+                          style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", zIndex: 5 }}
+                          viewBox="0 0 1000 1000" preserveAspectRatio="none"
+                          onMouseDown={(e) => {
+                            if (!hardscapeDrawing) return;
+                            const svg = e.currentTarget; const rect = svg.getBoundingClientRect();
+                            const pt = { x: (e.clientX - rect.left) / rect.width * 1000, y: (e.clientY - rect.top) / rect.height * 1000 };
+                            hardscapeDrawingRef.current = true;
+                            hardscapeCurrentPathRef.current = [pt];
+                            setHardscapeCurrentPath([pt]);
+                          }}
+                          onMouseMove={(e) => {
+                            if (!hardscapeDrawingRef.current) return;
+                            const svg = e.currentTarget; const rect = svg.getBoundingClientRect();
+                            const pt = { x: (e.clientX - rect.left) / rect.width * 1000, y: (e.clientY - rect.top) / rect.height * 1000 };
+                            hardscapeCurrentPathRef.current = [...hardscapeCurrentPathRef.current, pt];
+                            setHardscapeCurrentPath(hardscapeCurrentPathRef.current);
+                          }}
+                          onMouseUp={() => {
+                            const finalPath = hardscapeCurrentPathRef.current;
+                            if (finalPath.length > 3) setHardscapePaths(prev => [...prev, finalPath]);
+                            hardscapeDrawingRef.current = false;
+                            hardscapeCurrentPathRef.current = [];
+                            setHardscapeCurrentPath([]);
+                          }}
+                          onMouseLeave={() => {
+                            if (!hardscapeDrawingRef.current) return;
+                            const finalPath = hardscapeCurrentPathRef.current;
+                            if (finalPath.length > 3) setHardscapePaths(prev => [...prev, finalPath]);
+                            hardscapeDrawingRef.current = false;
+                            hardscapeCurrentPathRef.current = [];
+                            setHardscapeCurrentPath([]);
+                          }}
+                          onTouchStart={(e) => {
+                            if (!hardscapeDrawing) return;
+                            e.preventDefault();
+                            const svg = e.currentTarget; const rect = svg.getBoundingClientRect();
+                            const pt = { x: (e.touches[0].clientX - rect.left) / rect.width * 1000, y: (e.touches[0].clientY - rect.top) / rect.height * 1000 };
+                            hardscapeDrawingRef.current = true;
+                            hardscapeCurrentPathRef.current = [pt];
+                            setHardscapeCurrentPath([pt]);
+                          }}
+                          onTouchMove={(e) => {
+                            if (!hardscapeDrawingRef.current) return;
+                            e.preventDefault();
+                            const svg = e.currentTarget; const rect = svg.getBoundingClientRect();
+                            const pt = { x: (e.touches[0].clientX - rect.left) / rect.width * 1000, y: (e.touches[0].clientY - rect.top) / rect.height * 1000 };
+                            hardscapeCurrentPathRef.current = [...hardscapeCurrentPathRef.current, pt];
+                            setHardscapeCurrentPath(hardscapeCurrentPathRef.current);
+                          }}
+                          onTouchEnd={() => {
+                            const finalPath = hardscapeCurrentPathRef.current;
+                            if (finalPath.length > 3) setHardscapePaths(prev => [...prev, finalPath]);
+                            hardscapeDrawingRef.current = false;
+                            hardscapeCurrentPathRef.current = [];
+                            setHardscapeCurrentPath([]);
+                          }}
+                        >
+                          {hardscapePaths.map((path, i) => (
+                            <polygon key={i} points={path.map(p => `${p.x},${p.y}`).join(' ')}
+                              fill="rgba(59,130,246,0.2)" stroke="#3B82F6" strokeWidth="3" />
+                          ))}
+                          {hardscapeCurrentPath.length > 1 && (
+                            <polyline points={hardscapeCurrentPath.map(p => `${p.x},${p.y}`).join(' ')}
+                              fill="none" stroke="#3B82F6" strokeWidth="3" />
+                          )}
+                        </svg>
+                        {hardscapeDrawing && hardscapePaths.length === 0 && (
+                          <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", background: "#3B82F6", color: "#fff", padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, zIndex: 25, pointerEvents: "none" }}>
+                            Draw around the hardscape area
+                          </div>
+                        )}
+                      </div>
+                      {hardscapePaths.length > 0 && (
+                        <div style={{ marginTop: 12 }}>
+                          <textarea className="form-input" placeholder="Describe the hardscape... e.g. 'Flagstone walkway', 'Decomposed granite', 'Stone border edging', 'Brick pavers'"
+                            id="hardscapePromptInput"
+                            style={{ minHeight: 60, fontSize: 13, marginBottom: 12 }} />
+                          <button className="btn btn-primary" style={{ width: "100%", fontWeight: 700, padding: "12px 24px" }}
+                            onClick={async () => {
+                              const promptEl = document.getElementById('hardscapePromptInput');
+                              const hPrompt = promptEl?.value?.trim();
+                              if (!hPrompt) { alert('Describe the hardscape change first'); return; }
+                              // Build mask from hardscapePaths
+                              const canvas = document.createElement('canvas');
+                              canvas.width = 1024; canvas.height = 1024;
+                              const ctx = canvas.getContext('2d');
+                              ctx.fillStyle = '#ffffff';
+                              ctx.fillRect(0, 0, 1024, 1024);
+                              ctx.fillStyle = '#000000';
+                              for (const path of hardscapePaths) {
+                                ctx.beginPath();
+                                ctx.moveTo(path[0].x * 1.024, path[0].y * 1.024);
+                                for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x * 1.024, path[i].y * 1.024);
+                                ctx.closePath();
+                                ctx.fill();
+                              }
+                              const maskDataUrl = canvas.toDataURL('image/png');
+                              const btn = document.activeElement;
+                              if (btn) btn.disabled = true;
+                              if (btn) btn.textContent = '⟳ Applying Hardscape...';
+                              try {
+                                const api = apiRef.current;
+                                const result = await api.hardscape.apply(designRenderUrl, maskDataUrl, hPrompt);
+                                setDesignRenderUrl(result.renderUrl);
+                                setHardscapePaths([]);
+                                setHardscapeDrawing(false);
+                                if (promptEl) promptEl.value = '';
+                              } catch (err) {
+                                console.error('Hardscape failed:', err.message);
+                                alert('Hardscape edit failed: ' + err.message);
+                              } finally {
+                                if (btn) { btn.disabled = false; btn.textContent = '✨ Apply Hardscape'; }
+                              }
+                            }}>
+                            ✨ Apply Hardscape
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </>
               );
             })()}
@@ -2118,36 +2377,91 @@ function NewProjectPage() {
         })()}
 
         {/* Step 6: Estimate — REAL data */}
-        {step === 6 && (
+        {step === 6 && (() => {
+          // Build line items from designPlants (the actual AI design output)
+          const plantLineItems = designPlants.map(p => ({
+            description: p.common_name || p.plant_name || p.name || 'Plant',
+            botanical: p.botanical_name || '',
+            category: 'plant_material',
+            quantity: p.quantity || 1,
+            container_size: p.container_size || '',
+            wholesale_price: parseFloat(p.wholesale_price) || 0,
+            retail_price: parseFloat(p.retail_price) || parseFloat(p.wholesale_price) * 1.35 || 0,
+            layer: p.layer || '',
+          }));
+          // Use server estimate line items if available, otherwise build from designPlants
+          const serverItems = estimate?.line_items || [];
+          const hasServerPlantItems = serverItems.some(li => li.category === 'plant_material' || li.category === 'plant' || li.line_type === 'plant');
+          const bomItems = hasServerPlantItems ? serverItems.filter(li => li.category === 'plant_material' || li.category === 'plant' || li.line_type === 'plant') : plantLineItems;
+          const laborItems = serverItems.filter(li => li.category === 'labor' || li.line_type === 'labor');
+          const otherItems = serverItems.filter(li => !['plant_material', 'plant', 'labor'].includes(li.category) && !['plant', 'labor'].includes(li.line_type));
+
+          const materialTotal = bomItems.reduce((sum, li) => sum + ((li.retail_price || li.unit_cost || li.unit_price || 0) * (li.quantity || 1)), 0);
+          const laborTotal = laborItems.reduce((sum, li) => sum + (li.total || (li.quantity * (li.unit_cost || li.unit_price || 0))), 0);
+          const otherTotal = otherItems.reduce((sum, li) => sum + (li.total || (li.quantity * (li.unit_cost || li.unit_price || 0))), 0);
+          const subtotal = estimate?.subtotal || (materialTotal + laborTotal + otherTotal);
+          const taxRate = 0.0825;
+          const tax = estimate?.tax_amount || estimate?.tax || (subtotal * taxRate);
+          const total = estimate?.total || estimate?.grand_total || (subtotal + tax);
+
+          return (
           <div className="scale-in" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+            {/* Bill of Materials — Internal wholesale view */}
             <div className="card">
               <div className="card-header">
                 <h3 style={{ fontFamily: "var(--font-display)" }}>Bill of Materials (Internal)</h3>
               </div>
-              <div className="card-body">
-                {estimate?.line_items ? (
-                  <table>
-                    <thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead>
+              <div className="card-body" style={{ padding: 0 }}>
+                {bomItems.length > 0 ? (
+                  <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ borderBottom: "2px solid var(--filo-light)", fontSize: 11, textTransform: "uppercase", color: "var(--filo-grey)" }}>
+                        <th style={{ padding: "8px 12px", textAlign: "left" }}>Plant</th>
+                        <th style={{ padding: "8px 12px", textAlign: "left" }}>Size</th>
+                        <th style={{ padding: "8px 8px", textAlign: "center" }}>Qty</th>
+                        <th style={{ padding: "8px 8px", textAlign: "right" }}>Wholesale</th>
+                        <th style={{ padding: "8px 8px", textAlign: "right" }}>Retail</th>
+                        <th style={{ padding: "8px 12px", textAlign: "right" }}>Ext.</th>
+                      </tr>
+                    </thead>
                     <tbody>
-                      {estimate.line_items.filter(li => li.category === 'plant_material' || li.category === 'plant' || li.line_type === 'plant').map((li, i) => (
-                        <tr key={i}>
-                          <td>{li.description || li.name}</td>
-                          <td>{li.quantity}</td>
-                          <td>{fmt(li.unit_cost || li.unit_price)}</td>
-                          <td style={{ fontWeight: 600 }}>{fmt(li.total || (li.quantity * (li.unit_cost || li.unit_price)))}</td>
+                      {bomItems.map((li, i) => {
+                        const qty = li.quantity || 1;
+                        const ws = parseFloat(li.wholesale_price || li.unit_cost || 0);
+                        const rt = parseFloat(li.retail_price || li.unit_price || ws * 1.35);
+                        return (
+                        <tr key={i} style={{ borderBottom: "1px solid var(--filo-light)" }}>
+                          <td style={{ padding: "8px 12px" }}>
+                            <div style={{ fontWeight: 600 }}>{li.description || li.name}</div>
+                            {li.botanical && <div style={{ fontSize: 11, color: "var(--filo-grey)", fontStyle: "italic" }}>{li.botanical}</div>}
+                          </td>
+                          <td style={{ padding: "8px 12px", color: "var(--filo-grey)", fontSize: 12 }}>{li.container_size || '—'}</td>
+                          <td style={{ padding: "8px 8px", textAlign: "center", fontWeight: 600 }}>{qty}</td>
+                          <td style={{ padding: "8px 8px", textAlign: "right", color: "var(--filo-grey)" }}>{fmt(ws)}</td>
+                          <td style={{ padding: "8px 8px", textAlign: "right" }}>{fmt(rt)}</td>
+                          <td style={{ padding: "8px 12px", textAlign: "right", fontWeight: 600 }}>{fmt(rt * qty)}</td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
+                    <tfoot>
+                      <tr style={{ borderTop: "2px solid var(--filo-light)", fontWeight: 700 }}>
+                        <td colSpan={2} style={{ padding: "10px 12px" }}>Total Materials</td>
+                        <td style={{ padding: "10px 8px", textAlign: "center" }}>{bomItems.reduce((s, li) => s + (li.quantity || 1), 0)}</td>
+                        <td colSpan={2}></td>
+                        <td style={{ padding: "10px 12px", textAlign: "right" }}>{fmt(materialTotal)}</td>
+                      </tr>
+                    </tfoot>
                   </table>
                 ) : (
                   <div style={{ textAlign: "center", padding: 40, color: "var(--filo-grey)" }}>
-                    <p>Estimate data will appear here once generated.</p>
-                    {!estimate && <p style={{ fontSize: 12, marginTop: 8 }}>If generation failed, you can still proceed.</p>}
+                    <p>No plant materials in the design. Go back to AI Design to generate a plant list.</p>
                   </div>
                 )}
               </div>
             </div>
 
+            {/* Customer Estimate */}
             <div className="card">
               <div className="card-header">
                 <h3 style={{ fontFamily: "var(--font-display)" }}>Customer Estimate</h3>
@@ -2156,20 +2470,52 @@ function NewProjectPage() {
                 </span>
               </div>
               <div className="card-body">
-                {estimate ? (
+                {(bomItems.length > 0 || serverItems.length > 0) ? (
                   <>
-                    <div className="estimate-section">
-                      {(estimate.line_items || []).map((li, i) => (
-                        <div className="estimate-row" key={i}>
-                          <span>{li.description || li.name} {li.quantity > 1 ? `× ${li.quantity}` : ''}</span>
-                          <span style={{ fontWeight: 500 }}>{fmt(li.total || (li.quantity * (li.unit_cost || li.unit_price || 0)))}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="estimate-section" style={{ borderTop: "1px solid var(--filo-light)", paddingTop: 12 }}>
-                      {estimate.subtotal && <div className="estimate-row"><span>Subtotal</span><span>{fmt(estimate.subtotal)}</span></div>}
-                      {(estimate.tax_amount || estimate.tax) && <div className="estimate-row"><span>Tax</span><span>{fmt(estimate.tax_amount || estimate.tax)}</span></div>}
-                      <div className="estimate-row total"><span>Total</span><span className="estimate-total">{fmt(estimate.total || estimate.grand_total || 0)}</span></div>
+                    {/* Plant materials */}
+                    {bomItems.length > 0 && (
+                      <div className="estimate-section">
+                        <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--filo-grey)", marginBottom: 8 }}>Plant Materials</div>
+                        {bomItems.map((li, i) => {
+                          const qty = li.quantity || 1;
+                          const price = parseFloat(li.retail_price || li.unit_price || li.unit_cost || 0);
+                          return (
+                          <div className="estimate-row" key={`p${i}`}>
+                            <span>{li.description || li.name}{qty > 1 ? ` x ${qty}` : ''}{li.container_size ? ` (${li.container_size})` : ''}</span>
+                            <span style={{ fontWeight: 500 }}>{fmt(price * qty)}</span>
+                          </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {/* Labor */}
+                    {laborItems.length > 0 && (
+                      <div className="estimate-section" style={{ borderTop: "1px solid var(--filo-light)", paddingTop: 12, marginTop: 8 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--filo-grey)", marginBottom: 8 }}>Labor</div>
+                        {laborItems.map((li, i) => (
+                          <div className="estimate-row" key={`l${i}`}>
+                            <span>{li.description || li.name}{li.quantity > 1 ? ` x ${li.quantity}` : ''}</span>
+                            <span style={{ fontWeight: 500 }}>{fmt(li.total || (li.quantity * (li.unit_cost || li.unit_price || 0)))}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {/* Other items */}
+                    {otherItems.length > 0 && (
+                      <div className="estimate-section" style={{ borderTop: "1px solid var(--filo-light)", paddingTop: 12, marginTop: 8 }}>
+                        {otherItems.map((li, i) => (
+                          <div className="estimate-row" key={`o${i}`}>
+                            <span>{li.description || li.name}{li.quantity > 1 ? ` x ${li.quantity}` : ''}</span>
+                            <span style={{ fontWeight: 500 }}>{fmt(li.total || (li.quantity * (li.unit_cost || li.unit_price || 0)))}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {/* Totals */}
+                    <div className="estimate-section" style={{ borderTop: "2px solid var(--filo-charcoal)", paddingTop: 12, marginTop: 12 }}>
+                      <div className="estimate-row"><span>Subtotal</span><span>{fmt(subtotal)}</span></div>
+                      <div className="estimate-row"><span>Tax (8.25%)</span><span>{fmt(tax)}</span></div>
+                      <div className="estimate-row total"><span>Total</span><span className="estimate-total">{fmt(total)}</span></div>
                     </div>
                   </>
                 ) : (
@@ -2186,7 +2532,8 @@ function NewProjectPage() {
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* Step 7: Submittal — REAL data */}
         {step === 7 && (
