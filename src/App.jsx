@@ -3266,9 +3266,9 @@ function SettingsPage() {
                 Upload your nursery availability list, price sheet, or product catalog. FILO will parse it and populate your plant library automatically.
               </p>
               <p style={{ fontSize: 12, color: "var(--filo-silver)", marginBottom: 16 }}>
-                Supported formats: CSV, Excel (.xlsx), PDF, or plain text. Include plant names, sizes, and pricing for best results.
+                Supported formats: CSV (best), Excel (.xlsx), PDF, or plain text. CSV files are parsed instantly. Other formats use AI to extract product data. Include column headers like name, size, price for best results.
               </p>
-              <input type="file" accept=".csv,.xlsx,.xls,.pdf,.txt" id="products-upload"
+              <input type="file" accept=".csv,.xlsx,.xls,.pdf,.txt,.tsv" id="products-upload"
                 style={{ display: 'none' }}
                 onChange={async (e) => {
                   const file = e.target.files?.[0];
@@ -3276,7 +3276,8 @@ function SettingsPage() {
                   setSaving(true); setMsg(null);
                   try {
                     const result = await apiRef.current.plants.import(file);
-                    setMsg(`Imported ${result.imported || 0} products from ${file.name}${result.warnings?.length ? ` (${result.warnings.length} warnings)` : ''}`);
+                    const methodNote = result.method === 'csv-direct' ? ' (direct CSV import)' : result.method === 'ai' ? ' (AI parsed)' : '';
+                    setMsg(`Imported ${result.imported || 0} of ${result.total || 0} products from ${file.name}${methodNote}${result.warnings?.length ? ` — ${result.warnings.length} warning${result.warnings.length !== 1 ? 's' : ''}` : ''}`);
                   } catch (err) { setMsg(`Error: ${err.message}`); }
                   finally { setSaving(false); e.target.value = ''; }
                 }}
@@ -3284,6 +3285,14 @@ function SettingsPage() {
               <button className="btn btn-primary" disabled={saving} onClick={() => document.getElementById('products-upload')?.click()}>
                 {saving ? '⟳ Importing...' : '📄 Upload Product List'}
               </button>
+              {msg && (
+                <div style={{ marginTop: 12, padding: 10, borderRadius: "var(--radius-sm)", fontSize: 13,
+                  background: msg.startsWith('Error') ? '#FEF2F2' : '#F0FDF4',
+                  color: msg.startsWith('Error') ? '#DC2626' : '#16A34A',
+                  border: msg.startsWith('Error') ? '1px solid #FECACA' : '1px solid #BBF7D0' }}>
+                  {msg}
+                </div>
+              )}
             </div>
           </div>
         )}
