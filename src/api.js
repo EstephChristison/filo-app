@@ -271,6 +271,12 @@ export const clients = {
   async delete(id) {
     return apiFetch(`/clients/${id}`, { method: 'DELETE' });
   },
+
+  async import(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    return apiFetch('/clients/import', { method: 'POST', body: formData });
+  },
 };
 
 // ═══════════════════════════════════════════════════════════════════

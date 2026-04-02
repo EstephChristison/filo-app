@@ -486,7 +486,6 @@ function Sidebar({ page, setPage, mobileOpen, setMobileOpen, user }) {
   const { handleLogout } = useApp();
   const navItems = [
     { section: "Core", items: [
-      { id: "dashboard", icon: "📊", label: "Dashboard" },
       { id: "projects", icon: "📁", label: "Projects", badge: MOCK_PROJECTS.length },
       { id: "new-project", icon: "✨", label: "New Project" },
       { id: "clients", icon: "👥", label: "Clients" },
@@ -545,7 +544,7 @@ function Sidebar({ page, setPage, mobileOpen, setMobileOpen, user }) {
 // ─── Top Bar ─────────────────────────────────────────────────────
 function TopBar({ page, setMobileOpen }) {
   const titles = {
-    dashboard: "Dashboard", projects: "Projects", "new-project": "New Project",
+    projects: "Projects", "new-project": "New Project",
     clients: "Clients", plants: "Plant Library", templates: "Templates",
     estimates: "Estimates", submittals: "Submittals", crm: "CRM Integration",
     settings: "Settings", billing: "Billing", team: "Team",
@@ -554,7 +553,7 @@ function TopBar({ page, setMobileOpen }) {
     <div className="topbar">
       <button className="topbar-toggle" onClick={() => setMobileOpen(o => !o)}>☰</button>
       <div className="topbar-breadcrumb">
-        FILO / <span>{titles[page] || "Dashboard"}</span>
+        FILO / <span>{titles[page] || "Projects"}</span>
       </div>
       <div className="topbar-actions">
         <button className="btn btn-primary btn-sm" onClick={() => {}}>🔔</button>
@@ -2521,7 +2520,7 @@ function SettingsPage() {
       {msg && <div style={{ padding: 10, marginBottom: 16, borderRadius: 'var(--radius-sm)', background: msg.startsWith('Error') ? '#FEE2E2' : 'var(--filo-green-pale)', color: msg.startsWith('Error') ? '#991B1B' : 'var(--filo-green)', fontSize: 13 }}>{msg}</div>}
       <div className="page-body">
         <div className="tabs" style={{ maxWidth: 500 }}>
-          {[["company", "Company"], ["pricing", "Pricing"], ["tax", "Tax & Terms"], ["design", "Design Defaults"]].map(([val, label]) => (
+          {[["company", "Company"], ["pricing", "Pricing"], ["tax", "Tax & Terms"], ["design", "Design Defaults"], ["products", "Products & Services"], ["client-import", "Import Clients"]].map(([val, label]) => (
             <button key={val} className={cn("tab-btn", tab === val && "active")} onClick={() => setTab(val)}>{label}</button>
           ))}
         </div>
@@ -2638,7 +2637,7 @@ function SettingsPage() {
               <div className="form-group">
                 <label className="form-label">Default Design Style</label>
                 <div className="pill-group">
-                  {["formal", "naturalistic", "modern", "tropical", "xeriscape"].map(opt => (
+                  {["formal", "naturalistic", "modern", "tropical", "xeriscape", "mediterranean", "cottage", "desert", "farmhouse", "transitional"].map(opt => (
                     <span key={opt} className={cn("pill", settings.default_design_style === opt && "active")}
                       style={{ cursor: 'pointer', textTransform: 'capitalize' }}
                       onClick={() => update('default_design_style', opt)}>{opt}</span>
@@ -2648,6 +2647,66 @@ function SettingsPage() {
               <button className="btn btn-primary" disabled={saving} onClick={() => save({
                 default_design_style: settings.default_design_style ? settings.default_design_style.toLowerCase() : null,
               })}>{saving ? 'Saving...' : 'Save Defaults'}</button>
+            </div>
+          </div>
+        )}
+
+        {tab === "products" && (
+          <div className="card" style={{ maxWidth: 600 }}>
+            <div className="card-body">
+              <h3 style={{ fontFamily: "var(--font-display)", marginBottom: 8 }}>Upload Products & Services</h3>
+              <p style={{ fontSize: 13, color: "var(--filo-grey)", marginBottom: 16 }}>
+                Upload your nursery availability list, price sheet, or product catalog. FILO will parse it and populate your plant library automatically.
+              </p>
+              <p style={{ fontSize: 12, color: "var(--filo-silver)", marginBottom: 16 }}>
+                Supported formats: CSV, Excel (.xlsx), PDF, or plain text. Include plant names, sizes, and pricing for best results.
+              </p>
+              <input type="file" accept=".csv,.xlsx,.xls,.pdf,.txt" id="products-upload"
+                style={{ display: 'none' }}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file || !apiRef.current) return;
+                  setSaving(true); setMsg(null);
+                  try {
+                    const result = await apiRef.current.plants.import(file);
+                    setMsg(`Imported ${result.imported || 0} products from ${file.name}${result.warnings?.length ? ` (${result.warnings.length} warnings)` : ''}`);
+                  } catch (err) { setMsg(`Error: ${err.message}`); }
+                  finally { setSaving(false); e.target.value = ''; }
+                }}
+              />
+              <button className="btn btn-primary" disabled={saving} onClick={() => document.getElementById('products-upload')?.click()}>
+                {saving ? '⟳ Importing...' : '📄 Upload Product List'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {tab === "client-import" && (
+          <div className="card" style={{ maxWidth: 600 }}>
+            <div className="card-body">
+              <h3 style={{ fontFamily: "var(--font-display)", marginBottom: 8 }}>Import Client Info</h3>
+              <p style={{ fontSize: 13, color: "var(--filo-grey)", marginBottom: 16 }}>
+                Upload a CSV or Excel file with your client list. FILO will create client records automatically.
+              </p>
+              <p style={{ fontSize: 12, color: "var(--filo-silver)", marginBottom: 16 }}>
+                Required columns: Name, Address. Optional: Phone, Email. First row should be headers.
+              </p>
+              <input type="file" accept=".csv,.xlsx,.xls" id="clients-upload"
+                style={{ display: 'none' }}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file || !apiRef.current) return;
+                  setSaving(true); setMsg(null);
+                  try {
+                    const result = await apiRef.current.clients.import(file);
+                    setMsg(`Imported ${result.imported || 0} clients from ${file.name}${result.warnings?.length ? ` (${result.warnings.length} warnings)` : ''}`);
+                  } catch (err) { setMsg(`Error: ${err.message}`); }
+                  finally { setSaving(false); e.target.value = ''; }
+                }}
+              />
+              <button className="btn btn-primary" disabled={saving} onClick={() => document.getElementById('clients-upload')?.click()}>
+                {saving ? '⟳ Importing...' : '👥 Upload Client List'}
+              </button>
             </div>
           </div>
         )}
@@ -3546,7 +3605,7 @@ export default function App() {
 
   const [view, setView] = useState(inviteToken ? "invite" : "loading"); // loading | invite | login | register | forgot-password | forgot-email | onboarding | app
   const [user, setUser] = useState(null);
-  const [page, setPage] = useState("dashboard");
+  const [page, setPage] = useState("projects");
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Check for existing session on mount
@@ -3600,7 +3659,6 @@ export default function App() {
   };
 
   const pages = {
-    dashboard: <DashboardPage setPage={setPage} />,
     projects: <ProjectsPage setPage={setPage} />,
     "new-project": <ErrorBoundary><NewProjectPage /></ErrorBoundary>,
     clients: <ClientsPage />,
@@ -3677,7 +3735,7 @@ export default function App() {
           {mobileOpen && <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 45 }} onClick={() => setMobileOpen(false)} />}
           <div className={cn("main-content")}>
             <TopBar page={page} setMobileOpen={setMobileOpen} />
-            {pages[page] || <DashboardPage setPage={setPage} />}
+            {pages[page] || pages.projects}
           </div>
         </div>
       </AppContext.Provider>
