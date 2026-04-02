@@ -1690,25 +1690,32 @@ function NewProjectPage() {
 
           return (
           <div className="scale-in">
-            {/* Bed Prep Image (carried from Step 4) */}
-            <div className="card" style={{ marginBottom: 24 }}>
-              <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Prepared Bed</h3></div>
-              <div className="card-body">
-                {removalPreview ? (
-                  <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
-                    <img src={removalPreview} alt="Prepared Bed" style={{ width: "100%", display: "block" }} />
-                    <div style={{ position: "absolute", top: 12, left: 12, background: "var(--filo-green)", color: "#fff", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>PLANTS REMOVED — READY FOR DESIGN</div>
+            {/* Bed Prep Image (carried from Step 4) — show most processed: bed edge > removal > original */}
+            {(() => {
+              const prepImage = bedEdgePreview || removalPreview;
+              const prepLabel = bedEdgePreview ? 'BED EDGE UPDATED — READY FOR DESIGN'
+                : removalPreview ? 'PLANTS REMOVED — READY FOR DESIGN' : null;
+              return (
+                <div className="card" style={{ marginBottom: 24 }}>
+                  <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Prepared Bed</h3></div>
+                  <div className="card-body">
+                    {prepImage ? (
+                      <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+                        <img src={prepImage} alt="Prepared Bed" style={{ width: "100%", display: "block" }} />
+                        <div style={{ position: "absolute", top: 12, left: 12, background: "var(--filo-green)", color: "#fff", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>{prepLabel}</div>
+                      </div>
+                    ) : photoUrls.length > 0 ? (
+                      <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+                        <img src={photoUrls[0]} alt="Property" style={{ width: "100%", display: "block" }} />
+                        <div style={{ position: "absolute", top: 12, left: 12, background: "var(--filo-silver)", color: "#fff", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>ORIGINAL PHOTO</div>
+                      </div>
+                    ) : (
+                      <p style={{ color: "var(--filo-grey)", fontSize: 14 }}>No photo available. Go back to Step 3 to upload a property photo.</p>
+                    )}
                   </div>
-                ) : photoUrls.length > 0 ? (
-                  <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
-                    <img src={photoUrls[0]} alt="Property" style={{ width: "100%", display: "block" }} />
-                    <div style={{ position: "absolute", top: 12, left: 12, background: "var(--filo-silver)", color: "#fff", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>ORIGINAL PHOTO</div>
-                  </div>
-                ) : (
-                  <p style={{ color: "var(--filo-grey)", fontSize: 14 }}>No photo available. Go back to Step 3 to upload a property photo.</p>
-                )}
-              </div>
-            </div>
+                </div>
+              );
+            })()}
 
             {/* Design Mode Toggle */}
             <div className="card" style={{ marginBottom: 24 }}>
