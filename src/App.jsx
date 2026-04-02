@@ -745,9 +745,12 @@ function NewProjectPage() {
   const [placingPlant, setPlacingPlant] = useState(false);
   // Draw-to-remove tool state
   const [drawMode, setDrawMode] = useState(false); // 'remove' or false
+  const drawModeRef = useRef(false);
   const [isDrawing, setIsDrawing] = useState(false);
+  const isDrawingRef = useRef(false);
   const [drawPaths, setDrawPaths] = useState([]);
   const [currentPath, setCurrentPath] = useState([]);
+  const currentPathRef = useRef([]);
   const [removalPreview, setRemovalPreview] = useState(null);
   const removalPreviewRef = useRef(null); // Ref mirror — always current, never stale in closures
   // Bed Edge tool state
@@ -1287,23 +1290,29 @@ function NewProjectPage() {
             return { x: (clientX - rect.left) / rect.width * 1000, y: (clientY - rect.top) / rect.height * 1000 };
           };
           const startDraw = (e) => {
-            if (!drawMode) return;
+            if (!drawModeRef.current) return;
             if (e.type === 'touchstart') e.preventDefault();
             const pt = getDrawPoint(e);
             if (!pt) return;
+            isDrawingRef.current = true;
             setIsDrawing(true);
+            currentPathRef.current = [pt];
             setCurrentPath([pt]);
           };
           const moveDraw = (e) => {
-            if (!isDrawing || !drawMode) return;
+            if (!isDrawingRef.current || !drawModeRef.current) return;
             if (e.type === 'touchmove') e.preventDefault();
             const pt = getDrawPoint(e);
             if (!pt) return;
-            setCurrentPath(prev => [...prev, pt]);
+            currentPathRef.current = [...currentPathRef.current, pt];
+            setCurrentPath(currentPathRef.current);
           };
           const endDraw = () => {
-            if (currentPath.length > 3) setDrawPaths(prev => [...prev, { points: currentPath, type: 'remove' }]);
+            const finalPath = currentPathRef.current;
+            if (finalPath.length > 3) setDrawPaths(prev => [...prev, { points: finalPath, type: 'remove' }]);
+            isDrawingRef.current = false;
             setIsDrawing(false);
+            currentPathRef.current = [];
             setCurrentPath([]);
           };
 
@@ -1464,7 +1473,7 @@ function NewProjectPage() {
                         <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
                           <button className={`btn btn-sm ${drawMode === 'remove' ? '' : 'btn-ghost'}`}
                             style={drawMode === 'remove' ? { background: '#DC2626', color: '#fff', border: 'none', fontWeight: 600 } : { fontWeight: 600 }}
-                            onClick={() => setDrawMode(drawMode === 'remove' ? false : 'remove')}>
+                            onClick={() => { const next = drawMode === 'remove' ? false : 'remove'; drawModeRef.current = next; setDrawMode(next); }}>
                             {drawMode === 'remove' ? '🖌 Drawing — Circle plants to remove' : '🖌 Start Drawing'}
                           </button>
                           {drawPaths.length > 0 && (
