@@ -424,10 +424,10 @@ export const bedEdgePreview = {
 // ═══════════════════════════════════════════════════════════════════
 
 export const designRender = {
-  async generate(photoUrl, designPlants, keptPlants, removedPlants, designStyle, narrative, maskDataUrl) {
+  async generate(photoUrl, designPlants, keptPlants, removedPlants, designStyle, narrative, maskDataUrl, plantPins) {
     return apiFetch('/design-render', {
       method: 'POST',
-      body: { photoUrl, designPlants, keptPlants, removedPlants, designStyle, narrative, maskDataUrl },
+      body: { photoUrl, designPlants, keptPlants, removedPlants, designStyle, narrative, maskDataUrl, plantPins },
     });
   },
 };

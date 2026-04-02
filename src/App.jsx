@@ -787,6 +787,10 @@ function NewProjectPage() {
   const [newPromptName, setNewPromptName] = useState('');
   const [generatingPreview, setGeneratingPreview] = useState(false);
   const [generatingRender, setGeneratingRender] = useState(false);
+  // Plant placement pins — click photo to mark where specific plants go
+  const [plantPins, setPlantPins] = useState([]);
+  const [editingPinIdx, setEditingPinIdx] = useState(null);
+  const [placingPin, setPlacingPin] = useState(false);
   const removalCanvasRef = useRef(null);
   const canvasRef = useRef(null);
   const photoContainerRef = useRef(null);
@@ -1825,27 +1829,124 @@ function NewProjectPage() {
 
           return (
           <div className="scale-in">
-            {/* Bed Prep Image (carried from Step 4) — show most processed: bed edge > removal > original */}
+            {/* Bed Prep Image + Plant Placement Pins */}
             {(() => {
               const prepImage = bedEdgePreview || removalPreview;
               const prepLabel = bedEdgePreview ? 'BED EDGE UPDATED — READY FOR DESIGN'
                 : removalPreview ? 'PLANTS REMOVED — READY FOR DESIGN' : null;
+              const displayImage = prepImage || (photoUrls.length > 0 ? photoUrls[0] : null);
               return (
                 <div className="card" style={{ marginBottom: 24 }}>
-                  <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Prepared Bed</h3></div>
+                  <div className="card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Prepared Bed</h3>
+                    {displayImage && (
+                      <button className={`btn btn-sm ${placingPin ? '' : 'btn-ghost'}`}
+                        style={placingPin ? { background: '#7C3AED', color: '#fff', border: 'none', fontWeight: 600 } : { fontWeight: 600 }}
+                        onClick={() => setPlacingPin(!placingPin)}>
+                        {placingPin ? '📌 Click Photo to Place Pin' : '📌 Mark Plant Locations'}
+                      </button>
+                    )}
+                  </div>
                   <div className="card-body">
-                    {prepImage ? (
-                      <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
-                        <img src={prepImage} alt="Prepared Bed" style={{ width: "100%", display: "block" }} />
-                        <div style={{ position: "absolute", top: 12, left: 12, background: "var(--filo-green)", color: "#fff", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>{prepLabel}</div>
-                      </div>
-                    ) : photoUrls.length > 0 ? (
-                      <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
-                        <img src={photoUrls[0]} alt="Property" style={{ width: "100%", display: "block" }} />
-                        <div style={{ position: "absolute", top: 12, left: 12, background: "var(--filo-silver)", color: "#fff", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>ORIGINAL PHOTO</div>
+                    {displayImage ? (
+                      <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden", cursor: placingPin ? 'crosshair' : 'default' }}
+                        onClick={(e) => {
+                          if (!placingPin) return;
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const x = ((e.clientX - rect.left) / rect.width) * 100;
+                          const y = ((e.clientY - rect.top) / rect.height) * 100;
+                          const newPin = { x, y, request: '' };
+                          setPlantPins(prev => [...prev, newPin]);
+                          setEditingPinIdx(plantPins.length);
+                          setPlacingPin(false);
+                        }}>
+                        <img src={displayImage} alt="Prepared Bed" style={{ width: "100%", display: "block", pointerEvents: "none" }} draggable={false} />
+                        {prepLabel && (
+                          <div style={{ position: "absolute", top: 12, left: 12, background: "var(--filo-green)", color: "#fff", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>{prepLabel}</div>
+                        )}
+                        {!prepImage && photoUrls.length > 0 && (
+                          <div style={{ position: "absolute", top: 12, left: 12, background: "var(--filo-silver)", color: "#fff", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>ORIGINAL PHOTO</div>
+                        )}
+                        {/* Render plant placement pins */}
+                        {plantPins.map((pin, i) => (
+                          <div key={i} style={{ position: "absolute", left: `${pin.x}%`, top: `${pin.y}%`, transform: "translate(-50%, -100%)", zIndex: 10, pointerEvents: "auto", cursor: "pointer" }}
+                            onClick={(e) => { e.stopPropagation(); setEditingPinIdx(editingPinIdx === i ? null : i); }}>
+                            <div style={{ position: "relative" }}>
+                              <div style={{ fontSize: 28, lineHeight: 1, filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.5))" }}>📌</div>
+                              <div style={{ position: "absolute", top: -4, right: -8, background: "#7C3AED", color: "#fff", width: 18, height: 18, borderRadius: "50%", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #fff" }}>
+                                {i + 1}
+                              </div>
+                            </div>
+                            {pin.request && editingPinIdx !== i && (
+                              <div style={{ position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)", background: "rgba(124,58,237,0.9)", color: "#fff", padding: "3px 8px", borderRadius: 4, fontSize: 10, fontWeight: 600, whiteSpace: "nowrap", marginTop: 2, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {pin.request}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        {placingPin && plantPins.length === 0 && (
+                          <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", background: "rgba(124,58,237,0.85)", color: "#fff", padding: "12px 24px", borderRadius: 8, fontSize: 14, fontWeight: 600, pointerEvents: "none" }}>
+                            Tap where you want a specific plant
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <p style={{ color: "var(--filo-grey)", fontSize: 14 }}>No photo available. Go back to Step 3 to upload a property photo.</p>
+                    )}
+
+                    {/* Pin editing form */}
+                    {editingPinIdx !== null && plantPins[editingPinIdx] && (
+                      <div style={{ marginTop: 12, padding: 12, background: "#F5F3FF", borderRadius: "var(--radius-sm)", border: "1px solid #DDD6FE" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                          <div style={{ background: "#7C3AED", color: "#fff", width: 22, height: 22, borderRadius: "50%", fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            {editingPinIdx + 1}
+                          </div>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: "#5B21B6" }}>Plant Request — Pin {editingPinIdx + 1}</span>
+                          <button className="btn btn-sm btn-ghost" style={{ marginLeft: "auto", fontSize: 11, color: "#DC2626" }}
+                            onClick={() => {
+                              setPlantPins(prev => prev.filter((_, j) => j !== editingPinIdx));
+                              setEditingPinIdx(null);
+                            }}>Remove Pin</button>
+                        </div>
+                        <input className="form-input" autoFocus
+                          placeholder="e.g. Red Knockout Roses, Japanese Maple, Dwarf Yaupon Holly..."
+                          value={plantPins[editingPinIdx]?.request || ''}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setPlantPins(prev => prev.map((p, j) => j === editingPinIdx ? { ...p, request: val } : p));
+                          }}
+                          onKeyDown={e => { if (e.key === 'Enter') setEditingPinIdx(null); }}
+                          style={{ fontSize: 13, marginBottom: 8 }} />
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button className="btn btn-sm" style={{ background: "#7C3AED", color: "#fff", border: "none", fontWeight: 600, fontSize: 12 }}
+                            onClick={() => setEditingPinIdx(null)}>Done</button>
+                          <button className="btn btn-sm btn-ghost" style={{ fontSize: 12 }}
+                            onClick={() => setPlacingPin(true)}>📌 Add Another Pin</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Pin summary list */}
+                    {plantPins.length > 0 && editingPinIdx === null && (
+                      <div style={{ marginTop: 12 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#5B21B6" }}>Plant Placement Requests ({plantPins.length})</span>
+                          <button className="btn btn-sm btn-ghost" style={{ fontSize: 11, marginLeft: "auto" }}
+                            onClick={() => { setPlantPins([]); }}>Clear All</button>
+                        </div>
+                        {plantPins.map((pin, i) => (
+                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", borderBottom: "1px solid #EDE9FE" }}>
+                            <div style={{ background: "#7C3AED", color: "#fff", width: 20, height: 20, borderRadius: "50%", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                              {i + 1}
+                            </div>
+                            <span style={{ fontSize: 12, color: pin.request ? "var(--filo-slate)" : "var(--filo-grey)", fontStyle: pin.request ? "normal" : "italic", flex: 1 }}>
+                              {pin.request || 'No plant specified — click to edit'}
+                            </span>
+                            <button className="btn btn-sm btn-ghost" style={{ fontSize: 10, padding: "2px 6px" }}
+                              onClick={() => setEditingPinIdx(i)}>Edit</button>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1941,10 +2042,21 @@ function NewProjectPage() {
                       try {
                         const api = apiRef.current;
                         if (projectId) {
+                          // Combine text requests + pin-based placement requests
+                          let fullRequests = project.specialRequests || '';
+                          if (plantPins.length > 0) {
+                            const pinDescriptions = plantPins
+                              .filter(p => p.request?.trim())
+                              .map((p, i) => `PIN ${i + 1} (at ${Math.round(p.x)}% from left, ${Math.round(p.y)}% from top): ${p.request.trim()}`)
+                              .join('\n');
+                            if (pinDescriptions) {
+                              fullRequests = fullRequests ? fullRequests + '\n\nSPECIFIC PLANT PLACEMENT REQUESTS:\n' + pinDescriptions : 'SPECIFIC PLANT PLACEMENT REQUESTS:\n' + pinDescriptions;
+                            }
+                          }
                           await api.projects.update(projectId, {
                             sun_exposure: project.sun,
                             design_style: project.style,
-                            special_requests: project.specialRequests,
+                            special_requests: fullRequests,
                             lighting_requested: project.lighting,
                             hardscape_changes: project.hardscape,
                           });
@@ -1977,7 +2089,8 @@ function NewProjectPage() {
                                 detectedPlants.filter(p => plantMarks[p.id] === 'remove'),
                                 project.style || 'naturalistic',
                                 d?.narrative || d?.design_notes || '',
-                                null
+                                null,
+                                plantPins.filter(p => p.request?.trim())
                               ).then(result => {
                                 setDesignRenderUrl(result.renderUrl);
                               }).catch(err => {
@@ -2054,7 +2167,8 @@ function NewProjectPage() {
                     removedPlantsList,
                     project.style || 'naturalistic',
                     design?.narrative || design?.design_notes || '',
-                    maskDataUrl
+                    maskDataUrl,
+                    plantPins.filter(p => p.request?.trim())
                   );
                   setDesignRenderUrl(result.renderUrl);
                 } catch (err) {
