@@ -1728,7 +1728,7 @@ function NewProjectPage() {
                         ) : (
                           <div style={{
                             position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 12,
-                            border: bedEdgePath.length > 0 ? '2px solid #E5E7EB' : '2px solid #E97316',
+                            border: bedEdgePath.length > 0 ? 'none' : '2px solid #E97316',
                             cursor: bedEdgePath.length > 0 ? 'default' : 'crosshair', userSelect: "none",
                           }}>
                             <img src={removalPreview || photoUrls[0]} alt="Property" style={{ width: "100%", display: "block", pointerEvents: "none" }} draggable={false} />
@@ -1779,10 +1779,7 @@ function NewProjectPage() {
                               onTouchMove={drawToolMode === 'freehand' ? moveBedEdgeDraw : undefined}
                               onTouchEnd={drawToolMode === 'freehand' ? endBedEdgeDraw : undefined}
                             >
-                              {bedEdgePath.length > 2 && (
-                                <polygon points={bedEdgePath.map(p => `${p.x},${p.y}`).join(' ')}
-                                  fill="none" stroke="rgba(233,115,22,0.4)" strokeWidth="2" strokeDasharray="8,4" />
-                              )}
+                              {/* polygon overlay hidden once bed edge is drawn — user clicks Update Bed Edge to send to AI */}
                               {bedEdgeCurrentPath.length > 1 && drawToolMode === 'freehand' && (
                                 <polyline points={bedEdgeCurrentPath.map(p => `${p.x},${p.y}`).join(' ')}
                                   fill="none" stroke="#E97316" strokeWidth="3" />
