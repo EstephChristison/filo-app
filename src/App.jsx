@@ -1671,7 +1671,7 @@ function NewProjectPage() {
                         <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
                           {bedEdgePath.length > 0 && (
                             <>
-                              <span style={{ fontSize: 12, fontWeight: 600, color: "#E97316" }}>✓ Bed edge drawn</span>
+                              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--filo-green)" }}>✓ Bed edge drawn</span>
                               <button className="btn btn-sm btn-ghost" onClick={() => { setBedEdgePath([]); setBedEdgePreview(null); bedEdgePreviewRef.current = null; try { localStorage.removeItem('filo_bed_edge_preview'); } catch(e){} }}>
                                 Clear & Redraw
                               </button>
@@ -1684,11 +1684,11 @@ function NewProjectPage() {
                           )}
                           {polygonPoints.length >= 3 && bedEdgePath.length === 0 && drawToolMode === 'polygon' && (
                             <>
-                              <span style={{ fontSize: 12, fontWeight: 600, color: "#E97316" }}>{polygonPoints.length} points placed</span>
+                              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--filo-green)" }}>{polygonPoints.length} points placed</span>
                               <button className="btn btn-sm" onClick={() => {
                                 setBedEdgePath([...polygonPoints]);
                                 setPolygonPoints([]);
-                              }} style={{ background: '#E97316', color: '#fff', border: 'none', fontWeight: 600, padding: '6px 16px' }}>
+                              }} style={{ background: 'var(--filo-green)', color: '#fff', border: 'none', fontWeight: 600, padding: '6px 16px' }}>
                                 Close Polygon
                               </button>
                               <button className="btn btn-sm btn-ghost" onClick={() => setPolygonPoints([])}>
@@ -1730,7 +1730,7 @@ function NewProjectPage() {
                         ) : (
                           <div style={{
                             position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 12,
-                            border: bedEdgePath.length > 0 ? 'none' : '2px solid #E97316',
+                            border: bedEdgePath.length > 0 ? '1px solid #E5E7EB' : '2px dashed #D1D5DB',
                             cursor: bedEdgePath.length > 0 ? 'default' : 'crosshair', userSelect: "none",
                           }}>
                             <img src={removalPreview || photoUrls[0]} alt="Property" style={{ width: "100%", display: "block", pointerEvents: "none" }} draggable={false} />
@@ -1784,24 +1784,24 @@ function NewProjectPage() {
                               {/* polygon overlay hidden once bed edge is drawn — user clicks Update Bed Edge to send to AI */}
                               {bedEdgeCurrentPath.length > 1 && drawToolMode === 'freehand' && (
                                 <polyline points={bedEdgeCurrentPath.map(p => `${p.x},${p.y}`).join(' ')}
-                                  fill="none" stroke="#E97316" strokeWidth="3" />
+                                  fill="none" stroke="var(--filo-green)" strokeWidth="2" strokeDasharray="6,4" />
                               )}
                               {/* Polygon mode: show points and connecting lines */}
                               {polygonPoints.length > 0 && drawToolMode === 'polygon' && bedEdgePath.length === 0 && (
                                 <>
                                   <polyline points={polygonPoints.map(p => `${p.x},${p.y}`).join(' ')}
-                                    fill={polygonPoints.length > 2 ? "rgba(233,115,22,0.1)" : "none"} stroke="#E97316" strokeWidth="3" />
+                                    fill={polygonPoints.length > 2 ? "rgba(34,197,94,0.08)" : "none"} stroke="var(--filo-green)" strokeWidth="2" strokeDasharray="6,4" />
                                   {polygonPoints.map((p, i) => (
-                                    <circle key={i} cx={p.x} cy={p.y} r={i === 0 ? 16 : 7}
-                                      fill={i === 0 ? "#E97316" : "#fff"} stroke="#E97316" strokeWidth={i === 0 ? 3 : 2}
-                                      style={i === 0 && polygonPoints.length >= 3 ? { cursor: 'pointer', filter: 'drop-shadow(0 0 4px rgba(233,115,22,0.6))' } : {}} />
+                                    <circle key={i} cx={p.x} cy={p.y} r={i === 0 ? 14 : 5}
+                                      fill={i === 0 ? "var(--filo-green)" : "#fff"} stroke="var(--filo-green)" strokeWidth={i === 0 ? 2 : 1.5}
+                                      style={i === 0 && polygonPoints.length >= 3 ? { cursor: 'pointer', filter: 'drop-shadow(0 0 3px rgba(34,197,94,0.5))' } : {}} />
                                   ))}
                                 </>
                               )}
                             </svg>
                           </div>
                           {bedEdgePath.length === 0 && !bedEdgeDrawing && polygonPoints.length === 0 && (
-                            <div style={{ textAlign: "center", marginTop: 8, marginBottom: 4, color: "#E97316", fontSize: 12, fontWeight: 600 }}>
+                            <div style={{ textAlign: "center", marginTop: 8, marginBottom: 4, color: "var(--filo-grey)", fontSize: 12, fontWeight: 500 }}>
                               {drawToolMode === 'polygon' ? 'Click to place points — then click "Close Polygon" above' : 'Draw around the full bed perimeter'}
                             </div>
                           )}
