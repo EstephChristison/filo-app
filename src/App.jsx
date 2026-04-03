@@ -1667,8 +1667,8 @@ function NewProjectPage() {
                           </div>
                         </div>
 
-                        {/* Generate button — always available (drawing is optional) */}
-                        <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+                        {/* Status row */}
+                        <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
                           {bedEdgePath.length > 0 && (
                             <>
                               <span style={{ fontSize: 12, fontWeight: 600, color: "#E97316" }}>✓ Bed edge drawn</span>
@@ -1696,23 +1696,25 @@ function NewProjectPage() {
                               </button>
                             </>
                           )}
-                          <div style={{ flex: 1 }} />
+                        </div>
+                        {/* Action buttons row */}
+                        <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
+                          {bedEdgePreview && (
+                            <button className="btn btn-sm" onClick={() => { setBedEdgePreview(null); bedEdgePreviewRef.current = null; try { localStorage.removeItem('filo_bed_edge_preview'); } catch(e){} }} style={{ fontWeight: 600 }}>
+                              ← Back to Draw
+                            </button>
+                          )}
+                          {bedEdgePreview && (
+                            <button className="btn btn-sm" onClick={generateBedEdge} disabled={generatingBedEdge}
+                              style={{ background: 'var(--filo-green)', color: '#fff', border: 'none', fontWeight: 600, padding: '8px 16px' }}>
+                              {generatingBedEdge ? '⟳ Regenerating...' : '⟳ Regenerate'}
+                            </button>
+                          )}
                           {bedEdgePath.length >= 3 && !bedEdgePreview && (
                             <button className="btn btn-sm" onClick={generateBedEdge} disabled={generatingBedEdge}
                               style={{ background: 'var(--filo-green)', color: '#fff', border: 'none', fontWeight: 600, padding: '8px 20px' }}>
                               {generatingBedEdge ? '⟳ Generating...' : '✨ Update Bed Edge'}
                             </button>
-                          )}
-                          {bedEdgePreview && (
-                            <>
-                              <button className="btn btn-sm" onClick={() => { setBedEdgePreview(null); bedEdgePreviewRef.current = null; try { localStorage.removeItem('filo_bed_edge_preview'); } catch(e){} }} style={{ fontWeight: 600 }}>
-                                ← Back to Draw
-                              </button>
-                              <button className="btn btn-sm" onClick={generateBedEdge} disabled={generatingBedEdge}
-                                style={{ background: 'var(--filo-green)', color: '#fff', border: 'none', fontWeight: 600, padding: '8px 16px' }}>
-                                {generatingBedEdge ? '⟳ Regenerating...' : '⟳ Regenerate'}
-                              </button>
-                            </>
                           )}
                         </div>
 
