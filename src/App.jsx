@@ -725,7 +725,7 @@ function NewProjectPage() {
   const [project, setProject] = useState(saved?.project || {
     clientName: "", address: "", phone: "", email: "",
     areas: [],
-    sun: "", style: "", specialRequests: "", lighting: false, hardscape: false,
+    sun: "", designLayout: "", specialRequests: "", lighting: false, hardscape: false,
   });
 
   // File selections (not yet uploaded — cannot persist File objects across refresh)
@@ -787,6 +787,10 @@ function NewProjectPage() {
   const [newPromptName, setNewPromptName] = useState('');
   const [generatingPreview, setGeneratingPreview] = useState(false);
   const [generatingRender, setGeneratingRender] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [revisionPrompt, setRevisionPrompt] = useState('');
+  const [revisionHistory, setRevisionHistory] = useState([]);
+  const [applyingRevision, setApplyingRevision] = useState(false);
   // Plant placement pins — click photo to mark where specific plants go
   const [plantPins, setPlantPins] = useState([]);
   const [editingPinIdx, setEditingPinIdx] = useState(null);
@@ -942,8 +946,8 @@ function NewProjectPage() {
           if (projectId) {
             await api.projects.update(projectId, {
               sun_exposure: project.sun,
-              design_style: project.style,
-              special_requests: project.specialRequests,
+              design_style: project.designLayout ? project.designLayout.toLowerCase() : 'naturalistic',
+              special_requests: (project.designLayout ? `LAYOUT: ${project.designLayout} design. ` : '') + (project.specialRequests || ''),
               lighting_requested: project.lighting,
               hardscape_changes: project.hardscape,
             });
@@ -983,7 +987,7 @@ function NewProjectPage() {
                   finalPlants,
                   detectedPlants.filter(p => plantMarks[p.id] !== 'remove'),
                   detectedPlants.filter(p => plantMarks[p.id] === 'remove'),
-                  project.style || 'naturalistic',
+                  'naturalistic',
                   design?.narrative || design?.design_notes || '',
                   null
                 ).then(result => {
@@ -1599,20 +1603,18 @@ function NewProjectPage() {
                                     </>
                                   )}
                                 </svg>
-                                {drawMode === 'remove' && (
-                                  <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", background: "#DC2626", color: "#fff", padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, zIndex: 25, pointerEvents: "none" }}>
-                                    {drawToolMode === 'polygon' ? 'Click to place points — click first point to close' : 'Draw around plants to remove'}
-                                  </div>
-                                )}
-                                {!drawMode && drawPaths.length === 0 && (
-                                  <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", textAlign: "center", zIndex: 3 }}>
-                                    <div style={{ background: "rgba(0,0,0,0.75)", color: "#fff", padding: "12px 24px", borderRadius: 8, fontSize: 14, fontWeight: 600 }}>
-                                      Click "Start Drawing" then circle the plants to remove
-                                    </div>
-                                  </div>
-                                )}
                               </div>
                             ))}
+                            {drawMode === 'remove' && (
+                              <div style={{ textAlign: "center", marginTop: 8, marginBottom: 4, color: "#DC2626", fontSize: 12, fontWeight: 600 }}>
+                                {drawToolMode === 'polygon' ? 'Click to place points — click first point to close' : 'Draw around plants to remove'}
+                              </div>
+                            )}
+                            {!drawMode && drawPaths.length === 0 && (
+                              <div style={{ textAlign: "center", marginTop: 8, marginBottom: 4, color: "var(--filo-grey)", fontSize: 13, fontWeight: 600 }}>
+                                Click "Start Drawing" then circle the plants to remove
+                              </div>
+                            )}
                           </>
                         )}
 
@@ -1675,13 +1677,27 @@ function NewProjectPage() {
                               </button>
                             </>
                           )}
-                          {bedEdgePath.length === 0 && !bedEdgeDrawing && (
+                          {bedEdgePath.length === 0 && !bedEdgeDrawing && polygonPoints.length === 0 && (
                             <span style={{ fontSize: 12, color: "var(--filo-grey)" }}>
                               Draw the bed perimeter below, then generate
                             </span>
                           )}
+                          {polygonPoints.length >= 3 && bedEdgePath.length === 0 && drawToolMode === 'polygon' && (
+                            <>
+                              <span style={{ fontSize: 12, fontWeight: 600, color: "#E97316" }}>{polygonPoints.length} points placed</span>
+                              <button className="btn btn-sm" onClick={() => {
+                                setBedEdgePath([...polygonPoints]);
+                                setPolygonPoints([]);
+                              }} style={{ background: '#E97316', color: '#fff', border: 'none', fontWeight: 600, padding: '6px 16px' }}>
+                                Close Polygon
+                              </button>
+                              <button className="btn btn-sm btn-ghost" onClick={() => setPolygonPoints([])}>
+                                Clear
+                              </button>
+                            </>
+                          )}
                           <div style={{ flex: 1 }} />
-                          {bedEdgePath.length > 3 && !bedEdgePreview && (
+                          {bedEdgePath.length >= 3 && !bedEdgePreview && (
                             <button className="btn btn-sm" onClick={generateBedEdge} disabled={generatingBedEdge}
                               style={{ background: 'var(--filo-green)', color: '#fff', border: 'none', fontWeight: 600, padding: '8px 20px' }}>
                               {generatingBedEdge ? '⟳ Generating...' : '✨ Update Bed Edge'}
@@ -1712,7 +1728,8 @@ function NewProjectPage() {
                         ) : (
                           <div style={{
                             position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 12,
-                            border: '2px solid #E97316', cursor: 'crosshair', userSelect: "none",
+                            border: bedEdgePath.length > 0 ? '2px solid #E5E7EB' : '2px solid #E97316',
+                            cursor: bedEdgePath.length > 0 ? 'default' : 'crosshair', userSelect: "none",
                           }}>
                             <img src={removalPreview || photoUrls[0]} alt="Property" style={{ width: "100%", display: "block", pointerEvents: "none" }} draggable={false} />
                             <svg
@@ -1726,7 +1743,7 @@ function NewProjectPage() {
                                   if (polygonPoints.length >= 3) {
                                     const first = polygonPoints[0];
                                     const dist = Math.sqrt((pt.x - first.x) ** 2 + (pt.y - first.y) ** 2);
-                                    if (dist < 30) {
+                                    if (dist < 50) {
                                       setBedEdgePath([...polygonPoints]);
                                       setPolygonPoints([]);
                                       return;
@@ -1748,7 +1765,7 @@ function NewProjectPage() {
                                   if (polygonPoints.length >= 3) {
                                     const first = polygonPoints[0];
                                     const dist = Math.sqrt((pt.x - first.x) ** 2 + (pt.y - first.y) ** 2);
-                                    if (dist < 30) {
+                                    if (dist < 50) {
                                       setBedEdgePath([...polygonPoints]);
                                       setPolygonPoints([]);
                                       return;
@@ -1764,7 +1781,7 @@ function NewProjectPage() {
                             >
                               {bedEdgePath.length > 2 && (
                                 <polygon points={bedEdgePath.map(p => `${p.x},${p.y}`).join(' ')}
-                                  fill="rgba(233,115,22,0.15)" stroke="#E97316" strokeWidth="3" />
+                                  fill="none" stroke="rgba(233,115,22,0.4)" strokeWidth="2" strokeDasharray="8,4" />
                               )}
                               {bedEdgeCurrentPath.length > 1 && drawToolMode === 'freehand' && (
                                 <polyline points={bedEdgeCurrentPath.map(p => `${p.x},${p.y}`).join(' ')}
@@ -1776,18 +1793,19 @@ function NewProjectPage() {
                                   <polyline points={polygonPoints.map(p => `${p.x},${p.y}`).join(' ')}
                                     fill={polygonPoints.length > 2 ? "rgba(233,115,22,0.1)" : "none"} stroke="#E97316" strokeWidth="3" />
                                   {polygonPoints.map((p, i) => (
-                                    <circle key={i} cx={p.x} cy={p.y} r={i === 0 ? 12 : 6}
-                                      fill={i === 0 ? "#E97316" : "#fff"} stroke="#E97316" strokeWidth="2" />
+                                    <circle key={i} cx={p.x} cy={p.y} r={i === 0 ? 16 : 7}
+                                      fill={i === 0 ? "#E97316" : "#fff"} stroke="#E97316" strokeWidth={i === 0 ? 3 : 2}
+                                      style={i === 0 && polygonPoints.length >= 3 ? { cursor: 'pointer', filter: 'drop-shadow(0 0 4px rgba(233,115,22,0.6))' } : {}} />
                                   ))}
                                 </>
                               )}
                             </svg>
-                            {bedEdgePath.length === 0 && !bedEdgeDrawing && polygonPoints.length === 0 && (
-                              <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", background: "#E97316", color: "#fff", padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, zIndex: 25, pointerEvents: "none" }}>
-                                {drawToolMode === 'polygon' ? 'Click to place points — click first point to close' : 'Draw around the full bed perimeter'}
-                              </div>
-                            )}
                           </div>
+                          {bedEdgePath.length === 0 && !bedEdgeDrawing && polygonPoints.length === 0 && (
+                            <div style={{ textAlign: "center", marginTop: 8, marginBottom: 4, color: "#E97316", fontSize: 12, fontWeight: 600 }}>
+                              {drawToolMode === 'polygon' ? 'Click to place points — then click "Close Polygon" above' : 'Draw around the full bed perimeter'}
+                            </div>
+                          )}
                         )}
 
                         {bedEdgePreview && (
@@ -1967,18 +1985,15 @@ function NewProjectPage() {
                       ))}
                     </div>
                   </div>
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label" style={{ fontSize: 12 }}>Design Style</label>
-                    <div className="pill-group">
-                      {["Formal", "Naturalistic", "Modern", "Tropical", "Xeriscape", "Mediterranean", "Cottage", "Desert", "Farmhouse", "Transitional"].map(opt => (
-                        <span key={opt} className={cn("pill", project.style === opt && "active")}
-                          onClick={() => updateProject({ style: opt })} style={{ fontSize: 12, padding: "4px 10px" }}>{opt}</span>
-                      ))}
-                    </div>
-                  </div>
                 </div>
                 <div className="form-group" style={{ margin: 0, marginBottom: 16 }}>
-                  <label className="form-label" style={{ fontSize: 12 }}>Specific Plant Requests</label>
+                  <label className="form-label" style={{ fontSize: 12 }}>Design Style Request</label>
+                  <div className="pill-group" style={{ marginBottom: 10 }}>
+                    {["Symmetrical", "Asymmetrical"].map(opt => (
+                      <span key={opt} className={cn("pill", project.designLayout === opt && "active")}
+                        onClick={() => updateProject({ designLayout: opt })} style={{ fontSize: 12, padding: "4px 14px" }}>{opt}</span>
+                    ))}
+                  </div>
                   {/* Saved Prompts dropdown */}
                   {savedPromptsList.length > 0 && (
                     <div style={{ marginBottom: 8 }}>
@@ -2055,8 +2070,8 @@ function NewProjectPage() {
                           }
                           await api.projects.update(projectId, {
                             sun_exposure: project.sun,
-                            design_style: project.style,
-                            special_requests: fullRequests,
+                            design_style: project.designLayout ? project.designLayout.toLowerCase() : 'naturalistic',
+                            special_requests: (project.designLayout ? `LAYOUT: ${project.designLayout} design. ` : '') + fullRequests,
                             lighting_requested: project.lighting,
                             hardscape_changes: project.hardscape,
                           });
@@ -2087,7 +2102,7 @@ function NewProjectPage() {
                                 photoToUse, finalPlants,
                                 detectedPlants.filter(p => plantMarks[p.id] !== 'remove'),
                                 detectedPlants.filter(p => plantMarks[p.id] === 'remove'),
-                                project.style || 'naturalistic',
+                                'naturalistic',
                                 d?.narrative || d?.design_notes || '',
                                 null,
                                 plantPins.filter(p => p.request?.trim())
@@ -2165,7 +2180,7 @@ function NewProjectPage() {
                     designPlants,
                     keptPlantsList,
                     removedPlantsList,
-                    project.style || 'naturalistic',
+                    'naturalistic',
                     design?.narrative || design?.design_notes || '',
                     maskDataUrl,
                     plantPins.filter(p => p.request?.trim())
@@ -2249,10 +2264,77 @@ function NewProjectPage() {
                   </div>
                 </div>
 
-                {/* Design Adjustments — always visible when render exists */}
+                {/* Design Revisions — global changes: color swaps, plant swaps, chat */}
                 {designRenderUrl && (
                   <div className="card" style={{ marginBottom: 24 }}>
-                    <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Design Adjustments</h3></div>
+                    <div className="card-header">
+                      <h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Mark Specific Revisions</h3>
+                    </div>
+                    <div className="card-body">
+                      <div style={{ position: "relative" }}>
+                        <textarea className="form-input" placeholder="Describe your revision... e.g. 'Switch all red roses for pink ones', 'Replace all azaleas with Indian Hawthorn', 'Make the groundcover thicker', 'Change flower colors to all white'"
+                          value={revisionPrompt} onChange={e => setRevisionPrompt(e.target.value)}
+                          style={{ minHeight: 70, fontSize: 13, paddingRight: 80 }}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && !e.shiftKey && revisionPrompt.trim() && !applyingRevision) {
+                              e.preventDefault();
+                              document.getElementById('apply-revision-btn')?.click();
+                            }
+                          }} />
+                        <button id="apply-revision-btn" className="btn btn-primary btn-sm"
+                          disabled={!revisionPrompt.trim() || applyingRevision}
+                          style={{ position: "absolute", right: 8, bottom: 8, fontWeight: 700, padding: "8px 16px" }}
+                          onClick={async () => {
+                            if (!revisionPrompt.trim() || applyingRevision) return;
+                            setApplyingRevision(true);
+                            const thisRevision = revisionPrompt.trim();
+                            try {
+                              const api = apiRef.current;
+                              // Apply as full-image adjustment (center pin, full radius)
+                              const result = await api.designAdjust.apply(designRenderUrl, 50, 50, 50, thisRevision);
+                              setDesignRenderUrl(result.renderUrl);
+                              setRevisionHistory(prev => [...prev, { prompt: thisRevision, time: new Date().toLocaleTimeString() }]);
+                              setRevisionPrompt('');
+                            } catch (err) {
+                              console.error('Revision failed:', err.message);
+                              alert('Revision failed: ' + err.message);
+                            } finally { setApplyingRevision(false); }
+                          }}>
+                          {applyingRevision ? '⟳' : '→'}
+                        </button>
+                      </div>
+
+                      {/* Loading indicator */}
+                      {applyingRevision && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12, padding: 12, background: "var(--filo-green-pale)", borderRadius: "var(--radius-sm)" }}>
+                          <div style={{ width: 20, height: 20, border: "3px solid rgba(0,0,0,0.1)", borderTopColor: "var(--filo-green)", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+                          <span style={{ fontSize: 13, color: "var(--filo-green)", fontWeight: 600 }}>Applying revision to your design...</span>
+                        </div>
+                      )}
+
+                      {/* Revision history */}
+                      {revisionHistory.length > 0 && (
+                        <div style={{ marginTop: 16 }}>
+                          <label style={{ fontSize: 11, fontWeight: 700, color: "var(--filo-silver)", textTransform: "uppercase", letterSpacing: 0.5, display: "block", marginBottom: 6 }}>Revision History</label>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            {revisionHistory.map((rev, i) => (
+                              <div key={i} style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 12, color: "var(--filo-grey)" }}>
+                                <span style={{ color: "var(--filo-green)", fontWeight: 700 }}>✓</span>
+                                <span style={{ flex: 1 }}>{rev.prompt}</span>
+                                <span style={{ color: "var(--filo-silver)", fontSize: 10 }}>{rev.time}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Design Adjustments — pin-based local changes */}
+                {designRenderUrl && (
+                  <div className="card" style={{ marginBottom: 24 }}>
+                    <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Pinpoint Adjustments</h3></div>
                     <div className="card-body">
                       {!adjustPin ? (
                         <p style={{ color: "var(--filo-grey)", fontSize: 14, margin: 0 }}>
@@ -2796,57 +2878,112 @@ function NewProjectPage() {
         })()}
 
         {/* Step 7: Submittal — REAL data */}
-        {step === 7 && (
+        {step === 7 && (() => {
+          const totalPlants = designPlants.reduce((s, p) => s + (p.quantity || 1), 0);
+          return (
           <div className="scale-in">
-            <div className="submittal-preview">
-              <div className="submittal-cover">
-                <div style={{ fontSize: 48, marginBottom: 16 }}>🌿</div>
-                <h1>Landscape Design Proposal</h1>
-                <p style={{ fontFamily: "var(--font-display)", fontSize: 18, color: "var(--filo-grey)", marginBottom: 24 }}>
-                  Prepared for {project.clientName || "Client"}
-                </p>
-                <div style={{ fontSize: 14, color: "var(--filo-grey)" }}>
-                  {project.address}
+            {/* Submittal Preview Card */}
+            <div className="card" style={{ marginBottom: 24 }}>
+              <div className="card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Submittal Package Preview</h3>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {submittal?.id && (
+                    <button className="btn btn-primary btn-sm" disabled={generatingPdf}
+                      onClick={async () => {
+                        setGeneratingPdf(true);
+                        try {
+                          const api = apiRef.current;
+                          const result = await api.submittals.generatePDF(submittal.id, { designRenderUrl });
+                          if (result?.pdfUrl) {
+                            setSubmittal(prev => ({ ...prev, pdf_url: result.pdfUrl }));
+                            window.open(result.pdfUrl, '_blank');
+                          }
+                        } catch (err) {
+                          alert('PDF generation failed: ' + err.message);
+                        } finally { setGeneratingPdf(false); }
+                      }}>
+                      {generatingPdf ? '⟳ Generating PDF...' : '📄 Generate & Download PDF'}
+                    </button>
+                  )}
+                  {submittal?.pdf_url && !generatingPdf && (
+                    <a href={submittal.pdf_url} target="_blank" rel="noreferrer" className="btn btn-sm btn-ghost">↓ Download</a>
+                  )}
                 </div>
-                <div style={{ marginTop: 16, fontSize: 13, color: "var(--filo-silver)" }}>{new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
               </div>
-
-              {submittal?.narrative && (
-                <div className="submittal-section">
-                  <h3>Scope of Work</h3>
-                  <p style={{ lineHeight: 1.8, color: "var(--filo-slate)" }}>{submittal.narrative}</p>
-                </div>
-              )}
-
-              {(designPlants.length > 0) && (
-                <div className="submittal-section">
-                  <h3>Plant Profiles</h3>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
-                    {designPlants.slice(0, 6).map((p, i) => (
-                      <div key={i} style={{ padding: 20, border: "1px solid var(--filo-light)", borderRadius: "var(--radius)" }}>
-                        <div style={{ fontSize: 40, marginBottom: 8 }}>{p.img || "🌿"}</div>
-                        <h4 style={{ fontFamily: "var(--font-display)", fontSize: 16, marginBottom: 4 }}>{p.common_name || p.name}</h4>
-                        <div style={{ fontSize: 12, color: "var(--filo-grey)", marginBottom: 8 }}>
-                          {p.bloom_season || ''} {p.water_requirement || ''} {p.sun_requirement || ''}
-                        </div>
-                        {p.description && <p style={{ fontSize: 13, fontStyle: "italic", color: "var(--filo-slate)", lineHeight: 1.6 }}>{p.description}</p>}
-                      </div>
-                    ))}
+              <div className="card-body">
+                {/* Cover page preview */}
+                <div style={{ background: "linear-gradient(135deg, #f8faf8, #eef4ee)", borderRadius: "var(--radius-md)", padding: 40, textAlign: "center", marginBottom: 24, border: "1px solid #d4e4d4" }}>
+                  <div style={{ fontSize: 28, fontFamily: "var(--font-display)", fontWeight: 700, color: "#1a3a2a", marginBottom: 4 }}>
+                    {project.companyName || 'Your Company Name'}
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--filo-grey)", marginBottom: 20 }}>Landscape Submittal Package</div>
+                  <div style={{ width: 60, height: 2, background: "#2d6a4f", margin: "0 auto 20px" }} />
+                  <div style={{ fontSize: 13, color: "var(--filo-grey)", marginBottom: 4 }}>Prepared for</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: "#1a3a2a" }}>{project.clientName || 'Client'}</div>
+                  <div style={{ fontSize: 13, color: "var(--filo-grey)", marginTop: 4 }}>{project.address}</div>
+                  <div style={{ fontSize: 12, color: "var(--filo-silver)", marginTop: 12 }}>
+                    {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
                   </div>
                 </div>
-              )}
 
-              <div style={{ textAlign: "center", paddingTop: 32, borderTop: "2px solid var(--filo-green)" }}>
-                <span style={{ fontSize: 13, color: "var(--filo-grey)" }}>
-                  Generated by FILO
-                </span>
+                {/* Narrative preview */}
+                {submittal?.narrative && (
+                  <div style={{ marginBottom: 24 }}>
+                    <h4 style={{ fontFamily: "var(--font-display)", color: "#1a3a2a", marginBottom: 8 }}>Design Narrative</h4>
+                    <p style={{ fontSize: 13, lineHeight: 1.8, color: "var(--filo-slate)" }}>
+                      {submittal.narrative.length > 400 ? submittal.narrative.substring(0, 400) + '...' : submittal.narrative}
+                    </p>
+                  </div>
+                )}
+
+                {/* Design render preview */}
+                {designRenderUrl && (
+                  <div style={{ marginBottom: 24 }}>
+                    <h4 style={{ fontFamily: "var(--font-display)", color: "#1a3a2a", marginBottom: 8 }}>Design Rendering</h4>
+                    <img src={designRenderUrl} alt="Design Render" style={{ width: "100%", borderRadius: "var(--radius-md)", border: "1px solid var(--filo-light)" }} />
+                  </div>
+                )}
+
+                {/* Plant selections preview */}
+                {designPlants.length > 0 && (
+                  <div>
+                    <h4 style={{ fontFamily: "var(--font-display)", color: "#1a3a2a", marginBottom: 12 }}>Plant Selections ({totalPlants} total)</h4>
+                    <div style={{ display: "grid", gap: 12 }}>
+                      {designPlants.map((p, i) => (
+                        <div key={i} style={{ display: "flex", gap: 12, padding: 12, border: "1px solid var(--filo-light)", borderRadius: "var(--radius-sm)", alignItems: "center" }}>
+                          <div style={{ fontSize: 28, width: 40, textAlign: "center", flexShrink: 0 }}>🌿</div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 600, fontSize: 14 }}>{p.common_name || p.name} <span style={{ fontWeight: 400, color: "var(--filo-grey)", fontSize: 12 }}>{p.container_size || ''}</span></div>
+                            <div style={{ fontSize: 12, color: "var(--filo-grey)" }}>Qty: {p.quantity || 1}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Thank you footer */}
+                <div style={{ textAlign: "center", paddingTop: 24, marginTop: 24, borderTop: "2px solid #2d6a4f" }}>
+                  <div style={{ fontSize: 20, fontFamily: "var(--font-display)", color: "#1a3a2a", marginBottom: 4 }}>Thank You</div>
+                  <div style={{ fontSize: 12, color: "var(--filo-grey)" }}>We look forward to transforming your outdoor space.</div>
+                </div>
               </div>
             </div>
-            <div style={{ display: "flex", justifyContent: "center", gap: 12, marginTop: 24 }}>
-              {submittal?.pdf_url && <a href={submittal.pdf_url} target="_blank" rel="noreferrer" className="btn btn-primary btn-lg">Download PDF</a>}
-            </div>
+
+            {/* PDF status */}
+            {generatingPdf && (
+              <div style={{ textAlign: "center", padding: 24 }}>
+                <div style={{ width: 40, height: 40, border: "4px solid rgba(0,0,0,0.1)", borderTopColor: "var(--filo-green)", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 12px" }} />
+                <p style={{ color: "var(--filo-grey)", fontSize: 14 }}>Generating your submittal PDF... This may take a moment while we fetch images and build the document.</p>
+              </div>
+            )}
+
+            <p style={{ textAlign: "center", fontSize: 12, color: "var(--filo-silver)", marginTop: 12 }}>
+              Customize your submittal branding in Settings → Customize Submittal
+            </p>
           </div>
-        )}
+          );
+        })()}
 
         {/* Step 8: CRM Push / Complete */}
         {step === 8 && (
@@ -3181,7 +3318,7 @@ function SettingsPage() {
       {msg && <div style={{ padding: 10, marginBottom: 16, borderRadius: 'var(--radius-sm)', background: msg.startsWith('Error') ? '#FEE2E2' : 'var(--filo-green-pale)', color: msg.startsWith('Error') ? '#991B1B' : 'var(--filo-green)', fontSize: 13 }}>{msg}</div>}
       <div className="page-body">
         <div className="tabs" style={{ maxWidth: 500 }}>
-          {[["company", "Company"], ["pricing", "Pricing"], ["tax", "Tax & Terms"], ["design", "Design Defaults"], ["products", "Products & Services"], ["client-import", "Import Clients"]].map(([val, label]) => (
+          {[["company", "Company"], ["submittal", "Customize Submittal"], ["pricing", "Pricing"], ["tax", "Tax & Terms"], ["products", "Products & Services"], ["client-import", "Import Clients"]].map(([val, label]) => (
             <button key={val} className={cn("tab-btn", tab === val && "active")} onClick={() => setTab(val)}>{label}</button>
           ))}
         </div>
@@ -3199,6 +3336,111 @@ function SettingsPage() {
               </div>
               <div className="form-group"><label className="form-label">USDA Zone</label><input className="form-input" value={settings.usda_zone || ''} onChange={e => update('usda_zone', e.target.value)} /></div>
               <button className="btn btn-primary" disabled={saving} onClick={() => save({ name: settings.name, phone: settings.phone, email: settings.email, license_number: settings.license_number, city: settings.city, state: settings.state, usda_zone: settings.usda_zone })}>{saving ? 'Saving...' : 'Save Changes'}</button>
+            </div>
+          </div>
+        )}
+
+        {tab === "submittal" && (
+          <div className="card" style={{ maxWidth: 600 }}>
+            <div className="card-body">
+              <h3 style={{ fontFamily: "var(--font-display)", marginBottom: 4 }}>Submittal Branding</h3>
+              <p style={{ fontSize: 13, color: "var(--filo-grey)", marginBottom: 20 }}>
+                Customize how your submittal PDF looks to clients. Upload your logo, set brand colors, and add your credentials.
+              </p>
+
+              {/* Logo Upload */}
+              <div className="form-group">
+                <label className="form-label">Company Logo</label>
+                <p style={{ fontSize: 12, color: "var(--filo-silver)", marginBottom: 8 }}>Appears on cover page and header of every page. PNG or JPG, recommended 600×200px or larger.</p>
+                {settings.logo_url && (
+                  <div style={{ marginBottom: 12, padding: 16, background: "var(--filo-offwhite)", borderRadius: "var(--radius-sm)", textAlign: "center" }}>
+                    <img src={settings.logo_url} alt="Company Logo" style={{ maxHeight: 80, maxWidth: 300, objectFit: "contain" }} />
+                  </div>
+                )}
+                <input type="file" accept="image/png,image/jpeg,image/webp" id="logo-upload" style={{ display: 'none' }}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file || !apiRef.current) return;
+                    setSaving(true); setMsg(null);
+                    try {
+                      const result = await apiRef.current.files.upload(file, 'logo');
+                      const logoUrl = result?.cdn_url || result?.url;
+                      if (logoUrl) {
+                        update('logo_url', logoUrl);
+                        await apiRef.current.company.update({ logo_url: logoUrl });
+                        setMsg('Logo uploaded!');
+                        setTimeout(() => setMsg(null), 2000);
+                      }
+                    } catch (err) { setMsg(`Error: ${err.message}`); }
+                    finally { setSaving(false); e.target.value = ''; }
+                  }}
+                />
+                <button className="btn btn-secondary btn-sm" disabled={saving} onClick={() => document.getElementById('logo-upload')?.click()}>
+                  {saving ? '⟳ Uploading...' : settings.logo_url ? '🔄 Replace Logo' : '📤 Upload Logo'}
+                </button>
+              </div>
+
+              {/* Tagline */}
+              <div className="form-group">
+                <label className="form-label">Tagline / Slogan</label>
+                <input className="form-input" value={settings.tagline || ''} onChange={e => update('tagline', e.target.value)} placeholder="e.g. Live Like a King" />
+              </div>
+
+              {/* Credentials */}
+              <div className="form-group">
+                <label className="form-label">Credentials / Certifications</label>
+                <input className="form-input" value={settings.credentials || ''} onChange={e => update('credentials', e.target.value)} placeholder="e.g. ISA Certified Arborist • TX Licensed Irrigator #12345" />
+              </div>
+
+              {/* Website */}
+              <div className="form-group">
+                <label className="form-label">Website</label>
+                <input className="form-input" value={settings.website || ''} onChange={e => update('website', e.target.value)} placeholder="e.g. www.yourcompany.com" />
+              </div>
+
+              {/* Brand Colors */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Primary Color</label>
+                  <p style={{ fontSize: 11, color: "var(--filo-silver)", marginBottom: 6 }}>Headings, company name</p>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <input type="color" value={settings.submittal_primary_color || '#1a3a2a'} onChange={e => update('submittal_primary_color', e.target.value)}
+                      style={{ width: 44, height: 36, border: "1px solid var(--filo-light)", borderRadius: "var(--radius-sm)", cursor: "pointer", padding: 2 }} />
+                    <input className="form-input" value={settings.submittal_primary_color || '#1a3a2a'} onChange={e => update('submittal_primary_color', e.target.value)}
+                      style={{ flex: 1, fontFamily: "monospace", fontSize: 13 }} />
+                  </div>
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Accent Color</label>
+                  <p style={{ fontSize: 11, color: "var(--filo-silver)", marginBottom: 6 }}>Rules, highlights</p>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <input type="color" value={settings.submittal_accent_color || '#2d6a4f'} onChange={e => update('submittal_accent_color', e.target.value)}
+                      style={{ width: 44, height: 36, border: "1px solid var(--filo-light)", borderRadius: "var(--radius-sm)", cursor: "pointer", padding: 2 }} />
+                    <input className="form-input" value={settings.submittal_accent_color || '#2d6a4f'} onChange={e => update('submittal_accent_color', e.target.value)}
+                      style={{ flex: 1, fontFamily: "monospace", fontSize: 13 }} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Color preview */}
+              <div style={{ padding: 20, borderRadius: "var(--radius-md)", border: "1px solid var(--filo-light)", marginBottom: 20, background: "#fafcfa" }}>
+                <div style={{ fontSize: 11, color: "var(--filo-silver)", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Preview</div>
+                <div style={{ fontSize: 20, fontFamily: "var(--font-display)", fontWeight: 700, color: settings.submittal_primary_color || '#1a3a2a', marginBottom: 4 }}>
+                  {settings.name || 'Your Company Name'}
+                </div>
+                {settings.tagline && <div style={{ fontSize: 12, color: "var(--filo-grey)", marginBottom: 8 }}>{settings.tagline}</div>}
+                <div style={{ width: 60, height: 2, background: settings.submittal_accent_color || '#2d6a4f', marginBottom: 8 }} />
+                <div style={{ fontSize: 14, fontWeight: 600, color: settings.submittal_primary_color || '#1a3a2a' }}>Landscape Submittal Package</div>
+                {settings.credentials && <div style={{ fontSize: 11, color: "var(--filo-silver)", marginTop: 8 }}>{settings.credentials}</div>}
+              </div>
+
+              <button className="btn btn-primary" disabled={saving} onClick={() => save({
+                tagline: settings.tagline,
+                credentials: settings.credentials,
+                website: settings.website,
+                submittal_primary_color: settings.submittal_primary_color,
+                submittal_accent_color: settings.submittal_accent_color,
+              })}>{saving ? 'Saving...' : 'Save Submittal Branding'}</button>
             </div>
           </div>
         )}
@@ -3292,26 +3534,6 @@ function SettingsPage() {
           </div>
         )}
 
-        {tab === "design" && (
-          <div className="card" style={{ maxWidth: 600 }}>
-            <div className="card-body">
-              <div className="form-group">
-                <label className="form-label">Default Design Style</label>
-                <div className="pill-group">
-                  {["formal", "naturalistic", "modern", "tropical", "xeriscape", "mediterranean", "cottage", "desert", "farmhouse", "transitional"].map(opt => (
-                    <span key={opt} className={cn("pill", settings.default_design_style === opt && "active")}
-                      style={{ cursor: 'pointer', textTransform: 'capitalize' }}
-                      onClick={() => update('default_design_style', opt)}>{opt}</span>
-                  ))}
-                </div>
-              </div>
-              <button className="btn btn-primary" disabled={saving} onClick={() => save({
-                default_design_style: settings.default_design_style ? settings.default_design_style.toLowerCase() : null,
-              })}>{saving ? 'Saving...' : 'Save Defaults'}</button>
-            </div>
-          </div>
-        )}
-
         {tab === "products" && (
           <div className="card" style={{ maxWidth: 600 }}>
             <div className="card-body">
@@ -3336,9 +3558,24 @@ function SettingsPage() {
                   finally { setSaving(false); e.target.value = ''; }
                 }}
               />
-              <button className="btn btn-primary" disabled={saving} onClick={() => document.getElementById('products-upload')?.click()}>
-                {saving ? '⟳ Importing...' : '📄 Upload Product List'}
-              </button>
+              <div style={{ display: "flex", gap: 12 }}>
+                <button className="btn btn-primary" disabled={saving} onClick={() => document.getElementById('products-upload')?.click()}>
+                  {saving ? '⟳ Importing...' : '📄 Upload Product List'}
+                </button>
+                <button className="btn btn-secondary" disabled={saving} style={{ color: '#DC2626', borderColor: '#FECACA' }}
+                  onClick={async () => {
+                    if (!confirm('Delete ALL products & services from your library? This cannot be undone. You can re-import afterward.')) return;
+                    if (!apiRef.current) return;
+                    setSaving(true); setMsg(null);
+                    try {
+                      const result = await apiRef.current.plants.deleteAll();
+                      setMsg(`Cleared ${result.deleted || 0} products from your library. You can now re-import.`);
+                    } catch (err) { setMsg(`Error: ${err.message}`); }
+                    finally { setSaving(false); }
+                  }}>
+                  Clear All Products
+                </button>
+              </div>
               {msg && (
                 <div style={{ marginTop: 12, padding: 10, borderRadius: "var(--radius-sm)", fontSize: 13,
                   background: msg.startsWith('Error') ? '#FEF2F2' : '#F0FDF4',
@@ -3928,7 +4165,7 @@ function OnboardingWizard({ onComplete }) {
   // Company profile state
   const [co, setCo] = useState({
     name: '', phone: '', email: '', license_number: '',
-    city: '', state: '', usda_zone: '', design_style: '',
+    city: '', state: '', usda_zone: '',
     labor_pricing_method: 'lump_sum', material_markup_pct: 35, delivery_fee: 150,
     tax_enabled: true, tax_rate: 0.0825, default_terms: '', warranty_terms: '',
   });
@@ -3956,7 +4193,7 @@ function OnboardingWizard({ onComplete }) {
       const fields = {};
       if (step === 1) { fields.name = co.name; }
       if (step === 2) { fields.phone = co.phone; fields.email = co.email; fields.license_number = co.license_number; }
-      if (step === 3) { fields.city = co.city; fields.state = co.state; fields.usda_zone = co.usda_zone; if (co.design_style) fields.default_design_style = co.design_style.toLowerCase(); }
+      if (step === 3) { fields.city = co.city; fields.state = co.state; fields.usda_zone = co.usda_zone; }
       if (step === 5) { fields.labor_pricing_method = co.labor_pricing_method; fields.material_markup_pct = parseFloat(co.material_markup_pct) || 35; fields.delivery_fee = parseFloat(co.delivery_fee) || 150; }
       if (step === 6) { fields.tax_enabled = co.tax_enabled; fields.tax_rate = parseFloat(co.tax_rate) || 0.0825; fields.default_terms = co.default_terms; fields.warranty_terms = co.warranty_terms; }
       if (step === 7) { /* CRM Connect — settings saved via CRM UI, nothing extra to persist */ }
@@ -4126,14 +4363,6 @@ function OnboardingWizard({ onComplete }) {
                 {!co.usda_zone && (
                   <span style={{ fontSize: 12, color: "var(--filo-silver)" }}>Enter ZIP code to auto-detect</span>
                 )}
-              </div>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Default Design Style</label>
-              <div className="pill-group">
-                {["Formal", "Naturalistic", "Modern", "Tropical", "Xeriscape", "Mediterranean", "Cottage", "Desert", "Farmhouse", "Transitional"].map(s => (
-                  <span key={s} className={cn("pill", co.design_style === s && "active")} onClick={() => update('design_style', s)}>{s}</span>
-                ))}
               </div>
             </div>
           </div>
