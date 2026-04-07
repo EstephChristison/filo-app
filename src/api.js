@@ -118,6 +118,10 @@ async function apiFetch(path, options = {}) {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    // Subscription locked — fire global event so App can show lockout screen
+    if (error.code === 'SUBSCRIPTION_LOCKED') {
+      window.dispatchEvent(new CustomEvent('filo:subscription-locked'));
+    }
     throw new Error(error.error || error.message || `Request failed: ${response.status}`);
   }
 

@@ -525,6 +525,7 @@ function Sidebar({ page, setPage, mobileOpen, setMobileOpen, user }) {
   const { handleLogout } = useApp();
   const navItems = [
     { section: "Core", items: [
+      { id: "dashboard", icon: "📊", label: "Dashboard" },
       { id: "projects", icon: "📁", label: "Projects" },
       { id: "new-project", icon: "✨", label: "New Project" },
       { id: "clients", icon: "👥", label: "Clients" },
@@ -602,20 +603,45 @@ function TopBar({ page, setMobileOpen }) {
 }
 
 // ─── Dashboard ───────────────────────────────────────────────────
-function DashboardPage({ setPage }) {
+function DashboardPage({ setPage, openProject }) {
+  const [recentProjects, setRecentProjects] = useState(MOCK_PROJECTS);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const mod = await import('./api.js');
+        const result = await mod.projects.list({ limit: 10 });
+        const list = Array.isArray(result) ? result : result.projects || [];
+        if (!cancelled && list.length > 0) setRecentProjects(list);
+      } catch (err) {
+        console.error('Failed to load recent projects:', err.message);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  const { user } = useApp();
+  const active = recentProjects.filter(p => !['completed', 'cancelled'].includes(p.status)).length;
+  const pendingEst = recentProjects.filter(p => ['design_review', 'estimate_pending'].includes(p.status)).length;
+  const totalValue = recentProjects.reduce((s, p) => s + parseFloat(p.estimate_total || p.total || 0), 0);
+
   const stats = [
-    { label: "Active Projects", value: "12", change: "+3 this week", up: true },
-    { label: "Estimates Pending", value: "5", change: "$48,200 value", up: true },
-    { label: "Revenue This Month", value: "$86,400", change: "+12% vs last month", up: true },
-    { label: "Close Rate", value: "72%", change: "-2% vs last month", up: false },
+    { label: "Active Projects", value: String(active), change: `${recentProjects.length} total`, up: true },
+    { label: "Estimates Pending", value: String(pendingEst), change: pendingEst > 0 ? 'Needs review' : 'All clear', up: pendingEst > 0 },
+    { label: "Pipeline Value", value: fmt(totalValue), change: `${recentProjects.length} projects`, up: true },
+    { label: "Total Projects", value: String(recentProjects.length), change: '', up: true },
   ];
+
+  const firstName = user?.firstName || user?.first_name || 'there';
 
   return (
     <div className="fade-in">
       <div className="page-header">
         <div>
-          <h2>Good {new Date().getHours() < 12 ? "morning" : "afternoon"}, Esteph</h2>
-          <p>Here's what's happening with King's Garden Landscaping</p>
+          <h2>Good {new Date().getHours() < 12 ? "morning" : "afternoon"}, {firstName}</h2>
+          <p>Here's your project overview</p>
         </div>
         <button className="btn btn-primary" onClick={() => setPage("new-project")}>
           ✨ New Project
@@ -645,52 +671,36 @@ function DashboardPage({ setPage }) {
                 <tr><th>Project</th><th>Client</th><th>Status</th><th>Areas</th><th className="hide-mobile">Total</th><th></th></tr>
               </thead>
               <tbody>
-                {MOCK_PROJECTS.map(p => (
+                {recentProjects.map(p => {
+                  const status = STATUS_MAP[p.status] || { label: p.status, color: "#6B7280" };
+                  return (
                   <tr key={p.id} className="fade-in">
                     <td style={{ fontWeight: 500 }}>{p.id}</td>
-                    <td>{p.client}<br/><span style={{ fontSize: 12, color: "var(--filo-grey)" }}>{p.address}</span></td>
+                    <td>{p.client || p.name}<br/><span style={{ fontSize: 12, color: "var(--filo-grey)" }}>{p.address}</span></td>
                     <td>
-                      <span className="status-badge" style={{ background: STATUS_MAP[p.status].color + "18", color: STATUS_MAP[p.status].color }}>
-                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: STATUS_MAP[p.status].color, display: "inline-block" }}></span>
-                        {STATUS_MAP[p.status].label}
+                      <span className="status-badge" style={{ background: status.color + "18", color: status.color }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: status.color, display: "inline-block" }}></span>
+                        {status.label}
                       </span>
                     </td>
-                    <td>{p.areas.join(", ")}</td>
-                    <td className="hide-mobile" style={{ fontWeight: 600 }}>{fmt(p.total)}</td>
-                    <td><button className="btn btn-ghost btn-sm">Open →</button></td>
+                    <td>{(p.areas || []).join(", ")}</td>
+                    <td className="hide-mobile" style={{ fontWeight: 600 }}>{fmt(p.total || 0)}</td>
+                    <td><button className="btn btn-ghost btn-sm" onClick={() => openProject(p.id)}>Open →</button></td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-          <div className="card">
-            <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", fontSize: 18 }}>AI Design Queue</h3></div>
-            <div className="card-body">
-              {["Johnson Front Yard", "Chen Back Patio"].map((name, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid var(--filo-light)" }}>
-                  <div className="spinner" style={{ width: 20, height: 20 }}></div>
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 500 }}>{name}</div>
-                    <div style={{ fontSize: 12, color: "var(--filo-grey)" }}>Generating design...</div>
-                  </div>
-                  <div className="progress-bar" style={{ flex: 1, marginLeft: "auto" }}>
-                    <div className="progress-fill" style={{ width: `${60 + i * 25}%` }}></div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="card">
-            <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", fontSize: 18 }}>Quick Actions</h3></div>
-            <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <button className="btn btn-secondary" onClick={() => setPage("new-project")}>🌱 Create New Project</button>
-              <button className="btn btn-secondary" onClick={() => setPage("plants")}>🌿 Browse Products & Services</button>
-              <button className="btn btn-secondary" onClick={() => setPage("estimates")}>💰 View Pending Estimates</button>
-              <button className="btn btn-secondary" onClick={() => setPage("crm")}>🔗 CRM Sync Status</button>
-            </div>
+        <div className="card">
+          <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", fontSize: 18 }}>Quick Actions</h3></div>
+          <div className="card-body" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className="btn btn-secondary" onClick={() => setPage("new-project")}>🌱 Create New Project</button>
+            <button className="btn btn-secondary" onClick={() => setPage("plants")}>🌿 Products & Services</button>
+            <button className="btn btn-secondary" onClick={() => setPage("estimates")}>💰 Estimates</button>
+            <button className="btn btn-secondary" onClick={() => setPage("clients")}>👥 Clients</button>
           </div>
         </div>
       </div>
@@ -699,16 +709,36 @@ function DashboardPage({ setPage }) {
 }
 
 // ─── Projects Page ───────────────────────────────────────────────
-function ProjectsPage({ setPage }) {
+function ProjectsPage({ setPage, openProject }) {
   const [filter, setFilter] = useState("all");
-  const filtered = filter === "all" ? MOCK_PROJECTS : MOCK_PROJECTS.filter(p => p.status === filter);
+  const [projects, setProjectsList] = useState(MOCK_PROJECTS);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const mod = await import('./api.js');
+        const result = await mod.projects.list();
+        const list = Array.isArray(result) ? result : result.projects || [];
+        if (!cancelled) setProjectsList(list.length > 0 ? list : MOCK_PROJECTS);
+      } catch (err) {
+        console.error('Failed to load projects:', err.message);
+        if (!cancelled) setProjectsList(MOCK_PROJECTS);
+      } finally { if (!cancelled) setLoading(false); }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  const filtered = filter === "all" ? projects : projects.filter(p => p.status === filter);
 
   return (
     <div className="fade-in">
       <div className="page-header">
         <div>
           <h2>Projects</h2>
-          <p>{MOCK_PROJECTS.length} total projects</p>
+          <p>{projects.length} total projects</p>
         </div>
         <button className="btn btn-primary" onClick={() => setPage("new-project")}>✨ New Project</button>
       </div>
@@ -718,28 +748,263 @@ function ProjectsPage({ setPage }) {
             <button key={val} className={cn("tab-btn", filter === val && "active")} onClick={() => setFilter(val)}>{label}</button>
           ))}
         </div>
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 40, color: "var(--filo-grey)" }}>
+            <div className="spinner" style={{ margin: "0 auto 12px" }}></div>
+            <p>Loading projects...</p>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 40, color: "var(--filo-grey)" }}>
+            <p>No projects found. Create your first project to get started.</p>
+          </div>
+        ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
-          {filtered.map((p, i) => (
-            <div key={p.id} className="card fade-in" style={{ cursor: "pointer", animationDelay: `${i * 0.05}s` }}>
+          {filtered.map((p, i) => {
+            const status = STATUS_MAP[p.status] || { label: p.status, color: "#6B7280" };
+            return (
+            <div key={p.id} className="card fade-in" style={{ animationDelay: `${i * 0.05}s`, cursor: "pointer" }} onClick={() => openProject(p.id)}>
               <div className="card-body">
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: 12 }}>
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: 16 }}>{p.client}</div>
+                    <div style={{ fontWeight: 600, fontSize: 16 }}>{p.client || p.name}</div>
                     <div style={{ fontSize: 13, color: "var(--filo-grey)" }}>{p.address}</div>
                   </div>
-                  <span className="status-badge" style={{ background: STATUS_MAP[p.status].color + "18", color: STATUS_MAP[p.status].color }}>
-                    {STATUS_MAP[p.status].label}
+                  <span className="status-badge" style={{ background: status.color + "18", color: status.color }}>
+                    {status.label}
                   </span>
                 </div>
                 <div style={{ display: "flex", gap: 16, fontSize: 13, color: "var(--filo-grey)" }}>
-                  <span>📐 {p.areas.length} area{p.areas.length > 1 ? "s" : ""}</span>
-                  <span>📅 {p.date}</span>
+                  <span>📐 {(p.areas || []).length} area{(p.areas || []).length !== 1 ? "s" : ""}</span>
+                  <span>📅 {p.date || p.created_at?.substring(0, 10) || '—'}</span>
                 </div>
-                <div style={{ marginTop: 12, fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 600, color: "var(--filo-green)" }}>{fmt(p.total)}</div>
+                <div style={{ marginTop: 12, fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 600, color: "var(--filo-green)" }}>{fmt(p.total || 0)}</div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Project Detail Page ────────────────────────────────────────
+function ProjectDetailPage({ projectId, setPage }) {
+  const [project, setProject] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editFields, setEditFields] = useState({});
+  const [msg, setMsg] = useState(null);
+  const apiRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const mod = await import('./api.js');
+        apiRef.current = mod;
+        const data = await mod.projects.get(projectId);
+        if (!cancelled) setProject(data);
+      } catch (err) {
+        console.error('Failed to load project:', err.message);
+        if (!cancelled) setMsg({ type: 'error', text: 'Failed to load project' });
+      } finally { if (!cancelled) setLoading(false); }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const updated = await apiRef.current.projects.update(projectId, editFields);
+      setProject(prev => ({ ...prev, ...updated }));
+      setEditing(false);
+      setEditFields({});
+      setMsg({ type: 'success', text: 'Project updated' });
+      setTimeout(() => setMsg(null), 3000);
+    } catch (err) {
+      setMsg({ type: 'error', text: 'Failed to save: ' + err.message });
+    } finally { setSaving(false); }
+  };
+
+  const handleStatusChange = async (newStatus) => {
+    try {
+      await apiRef.current.projects.updateStatus(projectId, newStatus);
+      setProject(prev => ({ ...prev, status: newStatus }));
+      setMsg({ type: 'success', text: 'Status updated' });
+      setTimeout(() => setMsg(null), 3000);
+    } catch (err) {
+      setMsg({ type: 'error', text: 'Failed to update status: ' + err.message });
+    }
+  };
+
+  if (loading) return (
+    <div style={{ textAlign: "center", padding: 60, color: "var(--filo-grey)" }}>
+      <div className="spinner" style={{ margin: "0 auto 12px" }}></div>
+      <p>Loading project...</p>
+    </div>
+  );
+
+  if (!project) return (
+    <div style={{ textAlign: "center", padding: 60 }}>
+      <p style={{ color: "var(--filo-grey)" }}>{msg?.text || 'Project not found'}</p>
+      <button className="btn btn-secondary" onClick={() => setPage("projects")} style={{ marginTop: 16 }}>← Back to Projects</button>
+    </div>
+  );
+
+  const STATUS_OPTS = [
+    ['draft', 'Draft'], ['photo_upload', 'Photo Upload'], ['plant_detection', 'Plant Detection'],
+    ['design_generation', 'Design Generation'], ['design_review', 'In Review'],
+    ['estimate_pending', 'Estimate Pending'], ['estimate_approved', 'Approved'], ['completed', 'Completed']
+  ];
+  const status = STATUS_MAP[project.status] || { label: project.status, color: "#6B7280" };
+
+  return (
+    <div className="fade-in">
+      <div className="page-header" style={{ flexWrap: "wrap", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => setPage("projects")}>← Back</button>
+          <div>
+            <h2 style={{ margin: 0 }}>{project.client_name || project.name || 'Untitled Project'}</h2>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--filo-grey)" }}>{project.address || '—'}</p>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span className="status-badge" style={{ background: status.color + "18", color: status.color }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: status.color, display: "inline-block" }}></span>
+            {status.label}
+          </span>
+          {!editing && <button className="btn btn-secondary btn-sm" onClick={() => { setEditing(true); setEditFields({ name: project.name || '', special_requests: project.special_requests || '' }); }}>✏️ Edit</button>}
+        </div>
+      </div>
+
+      {msg && (
+        <div style={{ padding: "10px 16px", borderRadius: "var(--radius-md)", marginBottom: 16, background: msg.type === 'error' ? '#fef2f2' : '#f0fdf4', color: msg.type === 'error' ? '#b91c1c' : '#166534', fontSize: 13 }}>
+          {msg.text}
+        </div>
+      )}
+
+      <div className="page-body">
+        {editing ? (
+          <div className="card">
+            <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Edit Project</h3></div>
+            <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div>
+                <label className="form-label">Project Name</label>
+                <input className="form-input" value={editFields.name || ''} onChange={e => setEditFields(f => ({ ...f, name: e.target.value }))} />
+              </div>
+              <div>
+                <label className="form-label">Status</label>
+                <select className="form-input" value={editFields.status || project.status} onChange={e => setEditFields(f => ({ ...f, status: e.target.value }))}>
+                  {STATUS_OPTS.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="form-label">Sun Exposure</label>
+                <select className="form-input" value={editFields.sun_exposure || project.sun_exposure || ''} onChange={e => setEditFields(f => ({ ...f, sun_exposure: e.target.value }))}>
+                  <option value="">—</option>
+                  <option value="full_sun">Full Sun</option>
+                  <option value="partial_shade">Partial Shade</option>
+                  <option value="full_shade">Full Shade</option>
+                </select>
+              </div>
+              <div>
+                <label className="form-label">Special Requests</label>
+                <textarea className="form-input" rows={3} value={editFields.special_requests || ''} onChange={e => setEditFields(f => ({ ...f, special_requests: e.target.value }))} />
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn btn-primary" disabled={saving} onClick={handleSave}>{saving ? 'Saving...' : 'Save Changes'}</button>
+                <button className="btn btn-ghost" onClick={() => setEditing(false)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
+            {/* Project Info */}
+            <div className="card">
+              <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Project Info</h3></div>
+              <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div><span style={{ fontSize: 12, color: "var(--filo-grey)" }}>Client</span><div style={{ fontWeight: 500 }}>{project.client_name || '—'}</div></div>
+                <div><span style={{ fontSize: 12, color: "var(--filo-grey)" }}>Address</span><div style={{ fontWeight: 500 }}>{project.address || '—'}</div></div>
+                <div><span style={{ fontSize: 12, color: "var(--filo-grey)" }}>Sun Exposure</span><div style={{ fontWeight: 500 }}>{(project.sun_exposure || '—').replace(/_/g, ' ')}</div></div>
+                {project.special_requests && <div><span style={{ fontSize: 12, color: "var(--filo-grey)" }}>Special Requests</span><div style={{ fontWeight: 500 }}>{project.special_requests}</div></div>}
+                <div><span style={{ fontSize: 12, color: "var(--filo-grey)" }}>Created</span><div style={{ fontWeight: 500 }}>{project.created_at ? new Date(project.created_at).toLocaleDateString() : '—'}</div></div>
+              </div>
+            </div>
+
+            {/* Status */}
+            <div className="card">
+              <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Status & Actions</h3></div>
+              <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div>
+                  <label className="form-label">Update Status</label>
+                  <select className="form-input" value={project.status} onChange={e => handleStatusChange(e.target.value)}>
+                    {STATUS_OPTS.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
+                  </select>
+                </div>
+                {project.lighting_requested && <div style={{ fontSize: 13 }}>💡 Lighting requested</div>}
+                {project.hardscape_changes && <div style={{ fontSize: 13 }}>🧱 Hardscape changes requested</div>}
+              </div>
+            </div>
+
+            {/* Areas */}
+            <div className="card" style={{ gridColumn: "1 / -1" }}>
+              <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Areas ({(project.areas || []).length})</h3></div>
+              <div className="card-body">
+                {(project.areas || []).length === 0 ? (
+                  <p style={{ color: "var(--filo-grey)", fontSize: 13 }}>No areas defined yet.</p>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
+                    {project.areas.map(a => (
+                      <div key={a.id} style={{ padding: 16, borderRadius: "var(--radius-md)", border: "1px solid var(--filo-light)", background: "#fafcfa" }}>
+                        <div style={{ fontWeight: 600, marginBottom: 4 }}>{a.name || a.area_name || 'Area'}</div>
+                        <div style={{ fontSize: 12, color: "var(--filo-grey)" }}>{a.sqft ? `${a.sqft} sq ft` : '—'}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Designs */}
+            {(project.designs || []).length > 0 && (
+              <div className="card" style={{ gridColumn: "1 / -1" }}>
+                <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Designs ({project.designs.length})</h3></div>
+                <div className="card-body">
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
+                    {project.designs.map(d => (
+                      <div key={d.id} style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--filo-light)", overflow: "hidden" }}>
+                        {d.rendering_url && <img src={d.rendering_url} alt="Design" style={{ width: "100%", height: 140, objectFit: "cover" }} />}
+                        <div style={{ padding: 10, fontSize: 12, color: "var(--filo-grey)" }}>{d.created_at ? new Date(d.created_at).toLocaleDateString() : 'Design'}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Estimates */}
+            {(project.estimates || []).length > 0 && (
+              <div className="card" style={{ gridColumn: "1 / -1" }}>
+                <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", margin: 0 }}>Estimates ({project.estimates.length})</h3></div>
+                <div className="card-body">
+                  {project.estimates.map(e => (
+                    <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--filo-light)" }}>
+                      <div>
+                        <div style={{ fontWeight: 500 }}>{e.name || 'Estimate'}</div>
+                        <div style={{ fontSize: 12, color: "var(--filo-grey)" }}>{e.created_at ? new Date(e.created_at).toLocaleDateString() : '—'}</div>
+                      </div>
+                      <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--filo-green)" }}>{fmt(e.total_amount || 0)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -794,6 +1059,9 @@ function NewProjectPage() {
   const [drawToolMode, setDrawToolMode] = useState('freehand'); // 'freehand' | 'polygon'
   const [polygonPoints, setPolygonPoints] = useState([]); // current polygon being drawn
 
+  // Company name for submittal cover
+  const [companyName, setCompanyName] = useState('');
+
   // Bed Edge tool state (canvas-based)
   const [bedPrepSubStep, setBedPrepSubStep] = useState('removal');
   const [bedEdgePath, setBedEdgePath] = useState([]); // completed edge [{x,y}] as 0-100%
@@ -847,7 +1115,11 @@ function NewProjectPage() {
 
   // Load API module
   useEffect(() => {
-    import("./api.js").then(mod => { apiRef.current = mod.default; setApiReady(true); }).catch(console.error);
+    import("./api.js").then(mod => {
+      apiRef.current = mod.default;
+      setApiReady(true);
+      mod.default.company.get().then(c => { if (c?.name) setCompanyName(c.name); }).catch(() => {});
+    }).catch(console.error);
   }, []);
 
   // ─── Load saved prompts when reaching AI Design step ───
@@ -1061,23 +1333,24 @@ function NewProjectPage() {
                 const photoToUse = savedBedEdge || savedRemovalPreview || photoUrls[0];
                 setGeneratingRender(true);
                 console.log('[auto-render] Using:', savedBedEdge ? 'BED EDGE PREVIEW' : savedRemovalPreview ? 'REMOVAL PREVIEW' : 'ORIGINAL PHOTO');
-                api.designRender.generate(
-                  photoToUse,
-                  finalPlants,
-                  detectedPlants.filter(p => plantMarks[p.id] !== 'remove'),
-                  detectedPlants.filter(p => plantMarks[p.id] === 'remove'),
-                  'naturalistic',
-                  design?.narrative || design?.design_notes || '',
-                  null
-                ).then(result => {
+                try {
+                  const result = await api.designRender.generate(
+                    photoToUse,
+                    finalPlants,
+                    detectedPlants.filter(p => plantMarks[p.id] !== 'remove'),
+                    detectedPlants.filter(p => plantMarks[p.id] === 'remove'),
+                    'naturalistic',
+                    design?.narrative || design?.design_notes || '',
+                    null
+                  );
                   console.log('[auto-render] Success, renderUrl length:', result?.renderUrl?.length || 0);
                   setDesignRenderUrl(result.renderUrl);
-                }).catch(err => {
+                } catch (err) {
                   console.error('Auto design render failed:', err.message);
                   setError('Design render failed: ' + err.message + ' — you can retry from the button below.');
-                }).finally(() => {
+                } finally {
                   setGeneratingRender(false);
-                });
+                }
               }
             }
           }
@@ -1085,15 +1358,17 @@ function NewProjectPage() {
           break;
         }
         case 6: {
-          // Generate estimate
-          if (projectId) {
+          // Generate estimate, then stay on step 6 so user can review
+          if (projectId && !estimate?.id) {
             try {
               const est = await api.projects.generateEstimate(projectId);
               setEstimate(est.estimate || est);
             } catch (e) {
               console.log("Estimate generation error:", e.message);
             }
+            break;
           }
+          // Already have estimate — advance to submittal
           setStep(7);
           break;
         }
@@ -1219,7 +1494,7 @@ function NewProjectPage() {
       case 3: { const totalPhotos = Object.values(selectedFiles).reduce((sum, f) => sum + (f?.length || 0), 0); return totalPhotos > 0 ? `Upload ${totalPhotos} Photo${totalPhotos > 1 ? 's' : ''} →` : "Skip Photos →"; }
       case 4: return "Save & Continue →";
       case 5: return "Generate AI Design →";
-      case 6: return "Generate Estimate →";
+      case 6: return estimate?.id ? "Continue to Submittal →" : "Generate Estimate →";
       case 7: return "Approve & Create Submittal →";
       case 8: return "Complete Project →";
       default: return "Continue →";
@@ -2856,7 +3131,7 @@ function NewProjectPage() {
           const laborTotal = laborItems.reduce((sum, li) => sum + (li.total || (li.quantity * (li.unit_cost || li.unit_price || 0))), 0);
           const otherTotal = otherItems.reduce((sum, li) => sum + (li.total || (li.quantity * (li.unit_cost || li.unit_price || 0))), 0);
           const subtotal = estimate?.subtotal || (materialTotal + laborTotal + otherTotal);
-          const taxRate = 0.0825;
+          const taxRate = parseFloat(estimate?.tax_rate) || 0.0825;
           const tax = estimate?.tax_amount || estimate?.tax || (subtotal * taxRate);
           const total = estimate?.total || estimate?.grand_total || (subtotal + tax);
 
@@ -2970,7 +3245,7 @@ function NewProjectPage() {
                     {/* Totals */}
                     <div className="estimate-section" style={{ borderTop: "2px solid var(--filo-charcoal)", paddingTop: 12, marginTop: 12 }}>
                       <div className="estimate-row"><span>Subtotal</span><span>{fmt(subtotal)}</span></div>
-                      <div className="estimate-row"><span>Tax (8.25%)</span><span>{fmt(tax)}</span></div>
+                      <div className="estimate-row"><span>Tax ({(taxRate * 100).toFixed(2)}%)</span><span>{fmt(tax)}</span></div>
                       <div className="estimate-row total"><span>Total</span><span className="estimate-total">{fmt(total)}</span></div>
                     </div>
                   </>
@@ -2981,7 +3256,12 @@ function NewProjectPage() {
                 )}
                 <div style={{ marginTop: 24, display: "flex", gap: 12 }}>
                   <button className="btn btn-primary btn-lg" style={{ flex: 1 }}
-                    onClick={() => setEstimateApproved(true)} disabled={estimateApproved}>
+                    onClick={async () => {
+                      if (estimate?.id && apiRef.current) {
+                        try { await apiRef.current.estimates.approve(estimate.id); } catch (e) { console.log("Estimate approve error:", e.message); }
+                      }
+                      setEstimateApproved(true);
+                    }} disabled={estimateApproved}>
                     {estimateApproved ? "Approved" : "Approve Estimate"}
                   </button>
                 </div>
@@ -3028,7 +3308,7 @@ function NewProjectPage() {
                 {/* Cover page preview */}
                 <div style={{ background: "linear-gradient(135deg, #f8faf8, #eef4ee)", borderRadius: "var(--radius-md)", padding: 40, textAlign: "center", marginBottom: 24, border: "1px solid #d4e4d4" }}>
                   <div style={{ fontSize: 28, fontFamily: "var(--font-display)", fontWeight: 700, color: "#1a3a2a", marginBottom: 4 }}>
-                    {project.companyName || 'Your Company Name'}
+                    {companyName || 'Your Company Name'}
                   </div>
                   <div style={{ fontSize: 12, color: "var(--filo-grey)", marginBottom: 20 }}>Landscape Submittal Package</div>
                   <div style={{ width: 60, height: 2, background: "#2d6a4f", margin: "0 auto 20px" }} />
@@ -3137,22 +3417,36 @@ function NewProjectPage() {
 
 // ─── Products & Services ───────────────────────────────────────────────
 function PlantLibraryPage() {
+  const { user } = useApp();
+  const isAdmin = user?.role === 'admin';
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
+  const [selected, setSelected] = useState(new Set());
+  const [trash, setTrash] = useState([]);
+  const [showTrash, setShowTrash] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [editFields, setEditFields] = useState({});
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const result = await plantsApi.list();
-        setProducts(Array.isArray(result) ? result : result.plants || []);
-      } catch (err) {
-        console.error('Failed to load products:', err.message);
-      } finally { setLoading(false); }
-    };
-    load();
+  const loadProducts = useCallback(async () => {
+    try {
+      const result = await plantsApi.list();
+      setProducts(Array.isArray(result) ? result : result.plants || []);
+    } catch (err) {
+      console.error('Failed to load products:', err.message);
+    } finally { setLoading(false); }
   }, []);
+
+  useEffect(() => { loadProducts(); }, [loadProducts]);
+
+  // Refresh product list when tab becomes visible (covers import in Settings)
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') loadProducts(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [loadProducts]);
 
   const filtered = products.filter(p => {
     const matchesFilter = filter === 'all' || (p.category || '').toLowerCase() === filter;
@@ -3160,8 +3454,124 @@ function PlantLibraryPage() {
     return matchesFilter && matchesSearch;
   });
 
-  const categories = [...new Set(products.map(p => p.category).filter(Boolean))];
+  // Build pill list from known categories + any dynamic ones from data
+  const knownPills = [["shrub", "Shrubs"], ["tree", "Trees"], ["perennial", "Perennials"], ["annual", "Annuals"], ["groundcover", "Groundcover"], ["ornamental_grass", "Grasses"], ["vine", "Vines"], ["succulent", "Succulents"], ["hardscape", "Hardscape"], ["service", "Services"], ["supply", "Supplies"]];
+  const knownKeys = new Set(knownPills.map(([k]) => k));
+  const extraCategories = [...new Set(products.map(p => (p.category || '').toLowerCase()).filter(c => c && !knownKeys.has(c)))];
+  const allPills = [...knownPills, ...extraCategories.map(c => [c, c.charAt(0).toUpperCase() + c.slice(1).replace(/_/g, ' ')])];
 
+  const startEdit = (p) => {
+    setEditing(p.id);
+    setEditFields({
+      common_name: p.common_name || '',
+      botanical_name: p.botanical_name || '',
+      category: p.category || '',
+      container_size: p.container_size || '',
+      wholesale_price: p.wholesale_price ?? '',
+      retail_price: p.retail_price ?? '',
+    });
+  };
+
+  const saveEdit = async (id) => {
+    try {
+      const fields = { ...editFields };
+      if (fields.wholesale_price === '') fields.wholesale_price = null;
+      else fields.wholesale_price = parseFloat(fields.wholesale_price);
+      if (fields.retail_price === '') fields.retail_price = null;
+      else fields.retail_price = parseFloat(fields.retail_price);
+      await plantsApi.update(id, fields);
+      setEditing(null);
+      loadProducts();
+    } catch (err) { alert('Save failed: ' + err.message); }
+  };
+
+  const toggleSelect = (id) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selected.size === filtered.length) setSelected(new Set());
+    else setSelected(new Set(filtered.map(p => p.id)));
+  };
+
+  const moveToTrash = () => {
+    const toTrash = products.filter(p => selected.has(p.id));
+    setTrash(prev => [...prev, ...toTrash]);
+    setProducts(prev => prev.filter(p => !selected.has(p.id)));
+    setSelected(new Set());
+  };
+
+  const restoreFromTrash = (ids) => {
+    const toRestore = trash.filter(p => ids.includes(p.id));
+    setProducts(prev => [...prev, ...toRestore]);
+    setTrash(prev => prev.filter(p => !ids.includes(p.id)));
+  };
+
+  const permanentDelete = async (ids) => {
+    if (!confirm(`Permanently delete ${ids.length} item${ids.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
+    setDeleting(true);
+    try {
+      for (const id of ids) { await plantsApi.delete(id); }
+      setTrash(prev => prev.filter(p => !ids.includes(p.id)));
+    } catch (err) {
+      alert('Failed to delete: ' + err.message);
+    } finally { setDeleting(false); }
+  };
+
+  const emptyTrash = () => permanentDelete(trash.map(p => p.id));
+
+  // ─── Trash View ───
+  if (showTrash) {
+    return (
+      <div className="fade-in">
+        <div className="page-header">
+          <div>
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowTrash(false)} style={{ marginBottom: 8 }}>← Back to Products</button>
+            <h2>Trash</h2>
+            <p>{trash.length} item{trash.length !== 1 ? 's' : ''} in trash</p>
+          </div>
+          {trash.length > 0 && (
+            <button className="btn btn-ghost btn-sm" style={{ color: "var(--filo-red)" }} disabled={deleting}
+              onClick={emptyTrash}>{deleting ? 'Deleting...' : 'Empty Trash'}</button>
+          )}
+        </div>
+        <div className="page-body">
+          {trash.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 48, color: "var(--filo-grey)" }}>Trash is empty.</div>
+          ) : (
+            <div className="card">
+              <div className="table-wrap">
+                <table>
+                  <thead><tr><th>Name</th><th>Category</th><th>Size</th><th>Retail</th><th></th></tr></thead>
+                  <tbody>
+                    {trash.map((p, i) => (
+                      <tr key={p.id || i} style={{ opacity: 0.7 }}>
+                        <td style={{ fontWeight: 600 }}>{p.common_name}</td>
+                        <td><span style={{ fontSize: 11, background: "var(--filo-offwhite)", color: "var(--filo-grey)", padding: "2px 8px", borderRadius: 4, textTransform: "capitalize" }}>{p.category || '—'}</span></td>
+                        <td style={{ fontSize: 13 }}>{p.container_size || '—'}</td>
+                        <td style={{ fontSize: 13 }}>{p.retail_price ? fmt(p.retail_price) : '—'}</td>
+                        <td style={{ display: "flex", gap: 8 }}>
+                          <button className="btn btn-ghost btn-sm" onClick={() => restoreFromTrash([p.id])}>Restore</button>
+                          <button className="btn btn-ghost btn-sm" style={{ color: "var(--filo-red)" }} disabled={deleting}
+                            onClick={() => permanentDelete([p.id])}>Delete Forever</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Main View ───
   return (
     <div className="fade-in">
       <div className="page-header">
@@ -3169,24 +3579,33 @@ function PlantLibraryPage() {
           <h2>Products & Services</h2>
           <p>{products.length} items in your library</p>
         </div>
-        <button className="btn btn-primary" onClick={() => {
-          const name = prompt('Product/plant name:');
-          if (!name?.trim()) return;
-          plantsApi.create({ common_name: name.trim() }).then(() => {
-            plantsApi.list().then(r => setProducts(Array.isArray(r) ? r : r.plants || []));
-          }).catch(err => alert('Failed: ' + err.message));
-        }}>+ Add Product</button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => setShowTrash(true)}>
+            Trash {trash.length > 0 && <span style={{ marginLeft: 4, background: "var(--filo-red)", color: "#fff", borderRadius: 10, padding: "1px 6px", fontSize: 11 }}>{trash.length}</span>}
+          </button>
+          {isAdmin && <button className="btn btn-primary" onClick={() => {
+            const name = prompt('Product/plant name:');
+            if (!name?.trim()) return;
+            plantsApi.create({ common_name: name.trim() }).then(() => loadProducts())
+              .catch(err => alert('Failed: ' + err.message));
+          }}>+ Add Product</button>}
+        </div>
       </div>
       <div className="page-body">
-        <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap", alignItems: "center" }}>
           <input className="form-input" style={{ maxWidth: 300 }} placeholder="Search products & services..."
             value={search} onChange={e => setSearch(e.target.value)} />
           <div className="pill-group">
             <span className={cn("pill", filter === "all" && "active")} onClick={() => setFilter("all")}>All</span>
-            {[["shrub", "Shrubs"], ["tree", "Trees"], ["perennial", "Perennials"], ["groundcover", "Groundcover"], ["ornamental_grass", "Grasses"], ["hardscape", "Hardscape"], ["service", "Services"], ["supply", "Supplies"]].map(([val, label]) => (
+            {allPills.map(([val, label]) => (
               <span key={val} className={cn("pill", filter === val && "active")} onClick={() => setFilter(val)}>{label}</span>
             ))}
           </div>
+          {selected.size > 0 && (
+            <button className="btn btn-ghost btn-sm" style={{ color: "var(--filo-red)", marginLeft: "auto" }} onClick={moveToTrash}>
+              Move to Trash ({selected.size})
+            </button>
+          )}
         </div>
         {loading ? (
           <div style={{ textAlign: "center", padding: 48, color: "var(--filo-grey)" }}>Loading products...</div>
@@ -3200,24 +3619,51 @@ function PlantLibraryPage() {
               <table>
                 <thead>
                   <tr>
+                    <th style={{ width: 40 }}>
+                      <input type="checkbox" checked={selected.size === filtered.length && filtered.length > 0}
+                        onChange={toggleSelectAll} />
+                    </th>
                     <th>Name</th>
                     <th>Botanical</th>
                     <th>Category</th>
                     <th>Size</th>
                     <th>Wholesale</th>
                     <th>Retail</th>
+                    {isAdmin && <th style={{ width: 90 }}></th>}
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.slice(0, 200).map((p, i) => (
-                    <tr key={p.id || i}>
-                      <td style={{ fontWeight: 600 }}>{p.common_name}</td>
-                      <td style={{ fontStyle: "italic", color: "var(--filo-grey)", fontSize: 12 }}>{p.botanical_name || '—'}</td>
-                      <td><span style={{ fontSize: 11, background: "var(--filo-green-pale)", color: "var(--filo-green)", padding: "2px 8px", borderRadius: 4, textTransform: "capitalize" }}>{p.category || '—'}</span></td>
-                      <td style={{ fontSize: 13 }}>{p.container_size || '—'}</td>
-                      <td style={{ fontSize: 13 }}>{p.wholesale_price ? fmt(p.wholesale_price) : '—'}</td>
-                      <td style={{ fontSize: 13, fontWeight: 600 }}>{p.retail_price ? fmt(p.retail_price) : '—'}</td>
-                    </tr>
+                    editing === p.id ? (
+                      <tr key={p.id}>
+                        <td></td>
+                        <td><input className="form-input" style={{ fontSize: 13, padding: "4px 6px", width: "100%" }} value={editFields.common_name} onChange={e => setEditFields(f => ({ ...f, common_name: e.target.value }))} /></td>
+                        <td><input className="form-input" style={{ fontSize: 12, padding: "4px 6px", width: "100%" }} value={editFields.botanical_name} onChange={e => setEditFields(f => ({ ...f, botanical_name: e.target.value }))} /></td>
+                        <td><input className="form-input" style={{ fontSize: 12, padding: "4px 6px", width: 100 }} value={editFields.category} onChange={e => setEditFields(f => ({ ...f, category: e.target.value }))} /></td>
+                        <td><input className="form-input" style={{ fontSize: 12, padding: "4px 6px", width: 80 }} value={editFields.container_size} onChange={e => setEditFields(f => ({ ...f, container_size: e.target.value }))} /></td>
+                        <td><input className="form-input" type="number" step="0.01" style={{ fontSize: 12, padding: "4px 6px", width: 80 }} value={editFields.wholesale_price} onChange={e => setEditFields(f => ({ ...f, wholesale_price: e.target.value }))} /></td>
+                        <td><input className="form-input" type="number" step="0.01" style={{ fontSize: 12, padding: "4px 6px", width: 80 }} value={editFields.retail_price} onChange={e => setEditFields(f => ({ ...f, retail_price: e.target.value }))} /></td>
+                        <td style={{ whiteSpace: "nowrap" }}>
+                          <button className="btn btn-ghost btn-sm" style={{ fontSize: 12, color: "var(--filo-green)" }} onClick={() => saveEdit(p.id)}>Save</button>
+                          <button className="btn btn-ghost btn-sm" style={{ fontSize: 12 }} onClick={() => setEditing(null)}>Cancel</button>
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={p.id || i} style={{ background: selected.has(p.id) ? "var(--filo-green-pale)" : undefined }}>
+                        <td><input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleSelect(p.id)} /></td>
+                        <td style={{ fontWeight: 600 }}>{p.common_name}</td>
+                        <td style={{ fontStyle: "italic", color: "var(--filo-grey)", fontSize: 12 }}>{p.botanical_name || '—'}</td>
+                        <td><span style={{ fontSize: 11, background: "var(--filo-green-pale)", color: "var(--filo-green)", padding: "2px 8px", borderRadius: 4, textTransform: "capitalize" }}>{(p.category || '—').replace(/_/g, ' ')}</span></td>
+                        <td style={{ fontSize: 13 }}>{p.container_size || '—'}</td>
+                        <td style={{ fontSize: 13 }}>{p.wholesale_price != null ? fmt(p.wholesale_price) : '—'}</td>
+                        <td style={{ fontSize: 13, fontWeight: 600 }}>{p.retail_price != null ? fmt(p.retail_price) : '—'}</td>
+                        {isAdmin && (
+                          <td style={{ whiteSpace: "nowrap" }}>
+                            <button className="btn btn-ghost btn-sm" style={{ fontSize: 12 }} onClick={() => startEdit(p)}>Edit</button>
+                          </td>
+                        )}
+                      </tr>
+                    )
                   ))}
                 </tbody>
               </table>
@@ -3236,6 +3682,45 @@ function PlantLibraryPage() {
 
 // ─── Estimates Page ──────────────────────────────────────────────
 function EstimatesPage() {
+  const [estimates, setEstimates] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const mod = await import('./api.js');
+        const result = await mod.projects.list();
+        const projects = Array.isArray(result) ? result : result.projects || [];
+        // Collect estimates from projects that have them
+        const allEstimates = [];
+        for (const p of projects) {
+          if (p.current_estimate_id || p.estimate_total) {
+            allEstimates.push({
+              id: p.current_estimate_id || p.id,
+              project_id: p.id,
+              project_number: p.project_number || p.id,
+              client: p.client_name || p.client || p.name || '—',
+              total: parseFloat(p.estimate_total || p.total || 0),
+              status: p.status || 'draft',
+              date: p.updated_at?.substring(0, 10) || p.created_at?.substring(0, 10) || '—',
+            });
+          }
+        }
+        if (!cancelled) setEstimates(allEstimates);
+      } catch (err) {
+        console.error('Failed to load estimates:', err.message);
+      } finally { if (!cancelled) setLoading(false); }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  const pending = estimates.filter(e => ['design_review', 'estimate_pending', 'draft'].includes(e.status)).length;
+  const approved = estimates.filter(e => ['estimate_approved', 'submittal_sent', 'completed'].includes(e.status)).length;
+  const totalValue = estimates.reduce((s, e) => s + (e.total || 0), 0);
+  const winRate = estimates.length > 0 ? Math.round((approved / estimates.length) * 100) : 0;
+
   return (
     <div className="fade-in">
       <div className="page-header">
@@ -3243,34 +3728,42 @@ function EstimatesPage() {
       </div>
       <div className="page-body">
         <div className="stat-grid">
-          <div className="stat-card"><div className="stat-label">Pending Approval</div><div className="stat-value">5</div></div>
-          <div className="stat-card"><div className="stat-label">Approved</div><div className="stat-value">18</div></div>
-          <div className="stat-card"><div className="stat-label">Total Value</div><div className="stat-value">{fmt(186400)}</div></div>
-          <div className="stat-card"><div className="stat-label">Win Rate</div><div className="stat-value">72%</div></div>
+          <div className="stat-card"><div className="stat-label">Pending Approval</div><div className="stat-value">{pending}</div></div>
+          <div className="stat-card"><div className="stat-label">Approved</div><div className="stat-value">{approved}</div></div>
+          <div className="stat-card"><div className="stat-label">Total Value</div><div className="stat-value">{fmt(totalValue)}</div></div>
+          <div className="stat-card"><div className="stat-label">Win Rate</div><div className="stat-value">{winRate}%</div></div>
         </div>
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 40, color: "var(--filo-grey)" }}><div className="spinner" style={{ margin: "0 auto 12px" }}></div><p>Loading estimates...</p></div>
+        ) : (
         <div className="card">
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Project</th><th>Client</th><th>Amount</th><th>Status</th><th>Date</th><th></th></tr></thead>
+              <thead><tr><th>Project</th><th>Client</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
               <tbody>
-                {MOCK_PROJECTS.map(p => (
-                  <tr key={p.id}>
-                    <td style={{ fontWeight: 500 }}>{p.id}</td>
-                    <td>{p.client}</td>
-                    <td style={{ fontWeight: 600 }}>{fmt(p.total)}</td>
+                {estimates.length > 0 ? estimates.map(e => {
+                  const status = STATUS_MAP[e.status] || { label: e.status, color: "#6B7280" };
+                  return (
+                  <tr key={e.id}>
+                    <td style={{ fontWeight: 500 }}>{e.project_number}</td>
+                    <td>{e.client}</td>
+                    <td style={{ fontWeight: 600 }}>{fmt(e.total)}</td>
                     <td>
-                      <span className="status-badge" style={{ background: STATUS_MAP[p.status].color + "18", color: STATUS_MAP[p.status].color }}>
-                        {STATUS_MAP[p.status].label}
+                      <span className="status-badge" style={{ background: status.color + "18", color: status.color }}>
+                        {status.label}
                       </span>
                     </td>
-                    <td>{p.date}</td>
-                    <td><button className="btn btn-ghost btn-sm">View →</button></td>
+                    <td>{e.date}</td>
                   </tr>
-                ))}
+                  );
+                }) : (
+                  <tr><td colSpan={5} style={{ textAlign: "center", padding: 40, color: "var(--filo-grey)" }}>No estimates yet. Create a project to get started.</td></tr>
+                )}
               </tbody>
             </table>
           </div>
         </div>
+        )}
       </div>
     </div>
   );
@@ -3481,14 +3974,61 @@ function CRMPage() {
 
 // ─── Clients Page ────────────────────────────────────────────────
 function ClientsPage() {
-  const clients = [
-    { name: "Johnson Residence", address: "4521 River Oaks Blvd", phone: "(713) 555-0199", email: "johnson@email.com", projects: 2, total: 18450 },
-    { name: "Chen Family Estate", address: "1892 Memorial Dr", phone: "(713) 555-0244", email: "chen@email.com", projects: 1, total: 28900 },
-    { name: "Martinez Property", address: "7744 Tanglewood Ln", phone: "(713) 555-0177", email: "martinez@email.com", projects: 3, total: 42600 },
-    { name: "Williams Home", address: "3310 Piping Rock Ln", phone: "(713) 555-0155", email: "williams@email.com", projects: 1, total: 34200 },
-  ];
-
+  const [clients, setClients] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
+  const [search, setSearch] = useState('');
+  const [showAdd, setShowAdd] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const apiRef = useRef(null);
+  const [newClient, setNewClient] = useState({ first_name: '', last_name: '', email: '', phone: '', address_line1: '', city: '', state: '', zip: '', notes: '' });
+
+  const loadClients = async () => {
+    try {
+      const mod = await import('./api.js');
+      apiRef.current = mod.default;
+      const result = await mod.clients.list({ search });
+      setClients(Array.isArray(result) ? result : result.clients || []);
+    } catch (err) {
+      console.error('Failed to load clients:', err.message);
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => { loadClients(); }, []);
+
+  const handleCreate = async () => {
+    if (!apiRef.current || (!newClient.first_name && !newClient.last_name && !newClient.email)) return;
+    setSaving(true); setMsg(null);
+    try {
+      const displayName = [newClient.first_name, newClient.last_name].filter(Boolean).join(' ') || newClient.email;
+      await apiRef.current.clients.create({ ...newClient, display_name: displayName });
+      setNewClient({ first_name: '', last_name: '', email: '', phone: '', address_line1: '', city: '', state: '', zip: '', notes: '' });
+      setShowAdd(false);
+      setLoading(true);
+      await loadClients();
+    } catch (err) { setMsg(`Error: ${err.message}`); }
+    finally { setSaving(false); }
+  };
+
+  const handleDelete = async (id) => {
+    if (!apiRef.current || !confirm('Delete this client? This cannot be undone.')) return;
+    try {
+      await apiRef.current.clients.delete(id);
+      setSelected(null);
+      setLoading(true);
+      await loadClients();
+    } catch (err) { setMsg(`Error: ${err.message}`); }
+  };
+
+  const handleSearch = async () => {
+    setLoading(true);
+    await loadClients();
+  };
+
+  const filtered = search
+    ? clients.filter(c => (c.display_name || '').toLowerCase().includes(search.toLowerCase()) || (c.email || '').toLowerCase().includes(search.toLowerCase()) || (c.address_line1 || '').toLowerCase().includes(search.toLowerCase()))
+    : clients;
 
   if (selected) {
     return (
@@ -3496,37 +4036,32 @@ function ClientsPage() {
         <div className="page-header">
           <div>
             <button className="btn btn-ghost btn-sm" onClick={() => setSelected(null)} style={{ marginBottom: 8 }}>← Back to Clients</button>
-            <h2>{selected.name}</h2>
-            <p>{selected.address}</p>
+            <h2>{selected.display_name || `${selected.first_name || ''} ${selected.last_name || ''}`.trim()}</h2>
+            <p>{[selected.address_line1, selected.city, selected.state, selected.zip].filter(Boolean).join(', ')}</p>
           </div>
+          <button className="btn btn-secondary" style={{ color: '#DC2626' }} onClick={() => handleDelete(selected.id)}>Delete Client</button>
         </div>
         <div className="page-body">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 24 }}>
-            <div className="card"><div className="card-body" style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 13, color: "var(--filo-grey)", marginBottom: 4 }}>Total Revenue</div>
-              <div style={{ fontSize: 24, fontWeight: 700, color: "var(--filo-green)" }}>{fmt(selected.total)}</div>
-            </div></div>
-            <div className="card"><div className="card-body" style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 13, color: "var(--filo-grey)", marginBottom: 4 }}>Projects</div>
-              <div style={{ fontSize: 24, fontWeight: 700 }}>{selected.projects}</div>
-            </div></div>
-          </div>
           <div className="card">
             <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Contact Information</h3></div>
             <div className="card-body">
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                 <div>
                   <div style={{ fontSize: 13, color: "var(--filo-grey)", marginBottom: 4 }}>Phone</div>
-                  <div style={{ fontWeight: 500 }}>{selected.phone}</div>
+                  <div style={{ fontWeight: 500 }}>{selected.phone || '—'}</div>
                 </div>
                 <div>
                   <div style={{ fontSize: 13, color: "var(--filo-grey)", marginBottom: 4 }}>Email</div>
-                  <div style={{ fontWeight: 500 }}>{selected.email || "—"}</div>
+                  <div style={{ fontWeight: 500 }}>{selected.email || '—'}</div>
                 </div>
                 <div style={{ gridColumn: "1 / -1" }}>
                   <div style={{ fontSize: 13, color: "var(--filo-grey)", marginBottom: 4 }}>Address</div>
-                  <div style={{ fontWeight: 500 }}>{selected.address}</div>
+                  <div style={{ fontWeight: 500 }}>{[selected.address_line1, selected.city, selected.state, selected.zip].filter(Boolean).join(', ') || '—'}</div>
                 </div>
+                {selected.notes && <div style={{ gridColumn: "1 / -1" }}>
+                  <div style={{ fontSize: 13, color: "var(--filo-grey)", marginBottom: 4 }}>Notes</div>
+                  <div style={{ fontWeight: 500 }}>{selected.notes}</div>
+                </div>}
               </div>
             </div>
           </div>
@@ -3538,22 +4073,57 @@ function ClientsPage() {
   return (
     <div className="fade-in">
       <div className="page-header">
-        <div><h2>Clients</h2><p>{clients.length} clients in your database</p></div>
-        <button className="btn btn-primary">+ Add Client</button>
+        <div><h2>Clients</h2><p>{filtered.length} client{filtered.length !== 1 ? 's' : ''} in your database</p></div>
+        <button className="btn btn-primary" onClick={() => setShowAdd(!showAdd)}>+ Add Client</button>
       </div>
       <div className="page-body">
+        {msg && <div style={{ marginBottom: 16, padding: 10, borderRadius: 8, fontSize: 13, background: msg.startsWith('Error') ? '#FEF2F2' : '#F0FDF4', color: msg.startsWith('Error') ? '#DC2626' : '#16A34A' }}>{msg}</div>}
+
+        {showAdd && (
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>New Client</h3></div>
+            <div className="card-body">
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div><label className="form-label">First Name</label><input className="form-input" value={newClient.first_name} onChange={e => setNewClient(p => ({ ...p, first_name: e.target.value }))} /></div>
+                <div><label className="form-label">Last Name</label><input className="form-input" value={newClient.last_name} onChange={e => setNewClient(p => ({ ...p, last_name: e.target.value }))} /></div>
+                <div><label className="form-label">Email</label><input className="form-input" type="email" value={newClient.email} onChange={e => setNewClient(p => ({ ...p, email: e.target.value }))} /></div>
+                <div><label className="form-label">Phone</label><input className="form-input" value={newClient.phone} onChange={e => setNewClient(p => ({ ...p, phone: e.target.value }))} /></div>
+                <div style={{ gridColumn: "1 / -1" }}><label className="form-label">Address</label><input className="form-input" value={newClient.address_line1} onChange={e => setNewClient(p => ({ ...p, address_line1: e.target.value }))} /></div>
+                <div><label className="form-label">City</label><input className="form-input" value={newClient.city} onChange={e => setNewClient(p => ({ ...p, city: e.target.value }))} /></div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <div><label className="form-label">State</label><input className="form-input" value={newClient.state} onChange={e => setNewClient(p => ({ ...p, state: e.target.value }))} /></div>
+                  <div><label className="form-label">Zip</label><input className="form-input" value={newClient.zip} onChange={e => setNewClient(p => ({ ...p, zip: e.target.value }))} /></div>
+                </div>
+                <div style={{ gridColumn: "1 / -1" }}><label className="form-label">Notes</label><textarea className="form-input" rows={2} value={newClient.notes} onChange={e => setNewClient(p => ({ ...p, notes: e.target.value }))} /></div>
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                <button className="btn btn-primary" disabled={saving} onClick={handleCreate}>{saving ? 'Saving...' : 'Save Client'}</button>
+                <button className="btn btn-secondary" onClick={() => setShowAdd(false)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div style={{ marginBottom: 16 }}>
+          <input className="form-input" placeholder="Search clients..." value={search} onChange={e => setSearch(e.target.value)} style={{ maxWidth: 400 }} />
+        </div>
+
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 40, color: "var(--filo-grey)" }}><div className="spinner" style={{ margin: "0 auto 12px" }}></div><p>Loading clients...</p></div>
+        ) : filtered.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 40, color: "var(--filo-grey)" }}><p>No clients found. Add your first client or import a CSV from Settings.</p></div>
+        ) : (
         <div className="card">
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Client</th><th>Address</th><th>Phone</th><th>Projects</th><th>Revenue</th><th></th></tr></thead>
+              <thead><tr><th>Client</th><th>Address</th><th>Phone</th><th>Email</th><th></th></tr></thead>
               <tbody>
-                {clients.map((c, i) => (
-                  <tr key={i}>
-                    <td style={{ fontWeight: 500 }}>{c.name}</td>
-                    <td>{c.address}</td>
-                    <td>{c.phone}</td>
-                    <td>{c.projects}</td>
-                    <td style={{ fontWeight: 600, color: "var(--filo-green)" }}>{fmt(c.total)}</td>
+                {filtered.map(c => (
+                  <tr key={c.id}>
+                    <td style={{ fontWeight: 500 }}>{c.display_name || `${c.first_name || ''} ${c.last_name || ''}`.trim()}</td>
+                    <td>{[c.address_line1, c.city, c.state].filter(Boolean).join(', ') || '—'}</td>
+                    <td>{c.phone || '—'}</td>
+                    <td>{c.email || '—'}</td>
                     <td><button className="btn btn-ghost btn-sm" onClick={() => setSelected(c)}>View →</button></td>
                   </tr>
                 ))}
@@ -3561,6 +4131,7 @@ function ClientsPage() {
             </table>
           </div>
         </div>
+        )}
       </div>
     </div>
   );
@@ -3914,60 +4485,79 @@ function SettingsPage() {
 
 // ─── Billing Page ────────────────────────────────────────────────
 function BillingPage() {
+  const [billing, setBilling] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [msg, setMsg] = useState(null);
+  const apiRef = useRef(null);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const mod = await import('./api.js');
+        apiRef.current = mod.default;
+        const result = await mod.billing.status();
+        setBilling(result);
+      } catch (err) {
+        console.error('Failed to load billing:', err.message);
+      } finally { setLoading(false); }
+    };
+    load();
+  }, []);
+
+  const handlePortal = async () => {
+    if (!apiRef.current) return;
+    try {
+      const result = await apiRef.current.billing.portal(window.location.href);
+      if (result.url) window.location.href = result.url;
+    } catch (err) { setMsg(`Error: ${err.message}`); }
+  };
+
+  const sub = billing?.subscription;
+  const plan = sub?.plan || 'Free';
+  const statusLabel = sub?.status === 'active' ? 'Active' : sub?.status === 'trialing' ? 'Trial' : sub?.status || 'No subscription';
+  const amount = sub?.amount ? `$${(sub.amount / 100).toLocaleString()}` : '$0';
+  const userCount = billing?.userCount || billing?.users || 1;
+
   return (
     <div className="fade-in">
       <div className="page-header"><div><h2>Billing</h2><p>Manage your FILO subscription</p></div></div>
       <div className="page-body">
+        {msg && <div style={{ marginBottom: 16, padding: 10, borderRadius: 8, fontSize: 13, background: msg.startsWith('Error') ? '#FEF2F2' : '#F0FDF4', color: msg.startsWith('Error') ? '#DC2626' : '#16A34A' }}>{msg}</div>}
+
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 40, color: "var(--filo-grey)" }}><div className="spinner" style={{ margin: "0 auto 12px" }}></div><p>Loading billing...</p></div>
+        ) : (
+        <>
         <div className="card" style={{ marginBottom: 24, background: "linear-gradient(135deg, var(--filo-charcoal), var(--filo-slate))", color: "white", border: "none" }}>
           <div className="card-body" style={{ padding: 32 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
               <div>
                 <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, opacity: 0.6, marginBottom: 4 }}>Current Plan</div>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: 32, fontWeight: 700 }}>FILO Professional</div>
-                <div style={{ opacity: 0.7, marginTop: 4 }}>3 users included • Active since Jan 2026</div>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 32, fontWeight: 700 }}>FILO {plan}</div>
+                <div style={{ opacity: 0.7, marginTop: 4 }}>{userCount} user{userCount !== 1 ? 's' : ''} {statusLabel}</div>
               </div>
               <div style={{ textAlign: "right" }}>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: 40, fontWeight: 700 }}>$500</div>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 40, fontWeight: 700 }}>{amount}</div>
                 <div style={{ opacity: 0.6 }}>/month</div>
               </div>
             </div>
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-          <div className="card">
-            <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", fontSize: 16 }}>Users</h3></div>
-            <div className="card-body">
-              {[["Esteph Christison", "Admin", "Active"], ["Jack Christison", "Estimator", "Active"], ["Maria Garcia", "Estimator", "Active"]].map(([name, role, status], i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid var(--filo-light)" }}>
-                  <div className="avatar" style={{ width: 32, height: 32, fontSize: 12 }}>{name.split(" ").map(n => n[0]).join("")}</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 500, fontSize: 14 }}>{name}</div>
-                    <div style={{ fontSize: 12, color: "var(--filo-grey)" }}>{role}</div>
-                  </div>
-                  <span className="status-badge" style={{ background: "#D1FAE5", color: "#059669" }}>{status}</span>
-                </div>
-              ))}
-              <button className="btn btn-secondary btn-sm" style={{ marginTop: 12 }}>+ Add User ($99/mo)</button>
-            </div>
-          </div>
-          <div className="card">
-            <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", fontSize: 16 }}>Payment Method</h3></div>
-            <div className="card-body">
-              <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 16, background: "var(--filo-offwhite)", borderRadius: "var(--radius-sm)", marginBottom: 16 }}>
-                <span style={{ fontSize: 24 }}>💳</span>
-                <div>
-                  <div style={{ fontWeight: 500 }}>Visa ending in 4242</div>
-                  <div style={{ fontSize: 12, color: "var(--filo-grey)" }}>Expires 09/2028</div>
-                </div>
-              </div>
-              <button className="btn btn-secondary btn-sm">Update Payment Method</button>
-              <div style={{ marginTop: 16, padding: 12, background: "#FEF3C7", borderRadius: "var(--radius-sm)", fontSize: 12, color: "#92400E" }}>
-                ⚠️ If your subscription lapses, all account access will be locked. You can still export documents before cancellation.
-              </div>
+        <div className="card">
+          <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", fontSize: 16 }}>Manage Subscription</h3></div>
+          <div className="card-body">
+            <p style={{ fontSize: 14, color: "var(--filo-grey)", marginBottom: 16 }}>
+              Use the Stripe customer portal to update your payment method, view invoices, or change your plan.
+            </p>
+            <button className="btn btn-primary" onClick={handlePortal}>Open Billing Portal</button>
+            <div style={{ marginTop: 16, padding: 12, background: "#FEF3C7", borderRadius: "var(--radius-sm)", fontSize: 12, color: "#92400E" }}>
+              If your subscription lapses, account access will be locked. You can still export documents before cancellation.
             </div>
           </div>
         </div>
+        </>
+        )}
       </div>
     </div>
   );
@@ -3975,41 +4565,116 @@ function BillingPage() {
 
 // ─── Team Page ───────────────────────────────────────────────────
 function TeamPage() {
+  const [members, setMembers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showInvite, setShowInvite] = useState(false);
+  const [invite, setInvite] = useState({ email: '', firstName: '', lastName: '', role: 'estimator' });
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const apiRef = useRef(null);
+
+  const loadTeam = async () => {
+    try {
+      const mod = await import('./api.js');
+      apiRef.current = mod.default;
+      const result = await mod.team.list();
+      setMembers(Array.isArray(result) ? result : result.users || result.team || []);
+    } catch (err) {
+      console.error('Failed to load team:', err.message);
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => { loadTeam(); }, []);
+
+  const handleInvite = async () => {
+    if (!apiRef.current || !invite.email || !invite.firstName || !invite.lastName) return;
+    setSaving(true); setMsg(null);
+    try {
+      await apiRef.current.auth.invite(invite);
+      setInvite({ email: '', firstName: '', lastName: '', role: 'estimator' });
+      setShowInvite(false);
+      setMsg('Invite sent!');
+      setLoading(true);
+      await loadTeam();
+    } catch (err) { setMsg(`Error: ${err.message}`); }
+    finally { setSaving(false); }
+  };
+
+  const handleRemove = async (userId) => {
+    if (!apiRef.current || !confirm('Deactivate this user?')) return;
+    try {
+      await apiRef.current.team.remove(userId);
+      setLoading(true);
+      await loadTeam();
+    } catch (err) { setMsg(`Error: ${err.message}`); }
+  };
+
   return (
     <div className="fade-in">
       <div className="page-header">
         <div><h2>Team</h2><p>Manage users and permissions</p></div>
-        <button className="btn btn-primary">+ Invite User</button>
+        <button className="btn btn-primary" onClick={() => setShowInvite(!showInvite)}>+ Invite User</button>
       </div>
       <div className="page-body">
+        {msg && <div style={{ marginBottom: 16, padding: 10, borderRadius: 8, fontSize: 13, background: msg.startsWith('Error') ? '#FEF2F2' : '#F0FDF4', color: msg.startsWith('Error') ? '#DC2626' : '#16A34A' }}>{msg}</div>}
+
+        {showInvite && (
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Invite Team Member</h3></div>
+            <div className="card-body">
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div><label className="form-label">First Name</label><input className="form-input" value={invite.firstName} onChange={e => setInvite(p => ({ ...p, firstName: e.target.value }))} /></div>
+                <div><label className="form-label">Last Name</label><input className="form-input" value={invite.lastName} onChange={e => setInvite(p => ({ ...p, lastName: e.target.value }))} /></div>
+                <div><label className="form-label">Email</label><input className="form-input" type="email" value={invite.email} onChange={e => setInvite(p => ({ ...p, email: e.target.value }))} /></div>
+                <div><label className="form-label">Role</label>
+                  <select className="form-input" value={invite.role} onChange={e => setInvite(p => ({ ...p, role: e.target.value }))}>
+                    <option value="estimator">Estimator</option>
+                    <option value="designer">Designer</option>
+                    <option value="admin">Admin</option>
+                    <option value="viewer">Viewer</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                <button className="btn btn-primary" disabled={saving} onClick={handleInvite}>{saving ? 'Sending...' : 'Send Invite'}</button>
+                <button className="btn btn-secondary" onClick={() => setShowInvite(false)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 40, color: "var(--filo-grey)" }}><div className="spinner" style={{ margin: "0 auto 12px" }}></div><p>Loading team...</p></div>
+        ) : (
         <div className="card">
           <div className="table-wrap">
             <table>
-              <thead><tr><th>User</th><th>Role</th><th>Projects</th><th>Last Active</th><th>Status</th><th></th></tr></thead>
+              <thead><tr><th>User</th><th>Role</th><th>Status</th><th></th></tr></thead>
               <tbody>
-                {[
-                  { name: "Esteph Christison", email: "esteph@kingsgarden.com", role: "Admin", projects: 12, last: "Just now", active: true },
-                  { name: "Jack Christison", email: "jack@kingsgarden.com", role: "Estimator", projects: 8, last: "2 hours ago", active: true },
-                  { name: "Maria Garcia", email: "maria@kingsgarden.com", role: "Estimator", projects: 5, last: "Yesterday", active: true },
-                ].map((u, i) => (
-                  <tr key={i}>
+                {members.length > 0 ? members.map(u => {
+                  const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.email;
+                  const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+                  return (
+                  <tr key={u.id}>
                     <td>
                       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                        <div className="avatar" style={{ width: 32, height: 32, fontSize: 12 }}>{u.name.split(" ").map(n => n[0]).join("")}</div>
-                        <div><div style={{ fontWeight: 500 }}>{u.name}</div><div style={{ fontSize: 12, color: "var(--filo-grey)" }}>{u.email}</div></div>
+                        <div className="avatar" style={{ width: 32, height: 32, fontSize: 12 }}>{initials}</div>
+                        <div><div style={{ fontWeight: 500 }}>{name}</div><div style={{ fontSize: 12, color: "var(--filo-grey)" }}>{u.email}</div></div>
                       </div>
                     </td>
-                    <td><span className="status-badge" style={{ background: u.role === "Admin" ? "var(--filo-green-pale)" : "var(--filo-offwhite)", color: u.role === "Admin" ? "var(--filo-green)" : "var(--filo-grey)" }}>{u.role}</span></td>
-                    <td>{u.projects}</td>
-                    <td style={{ fontSize: 13, color: "var(--filo-grey)" }}>{u.last}</td>
-                    <td><span className="status-badge" style={{ background: "#D1FAE5", color: "#059669" }}>Active</span></td>
-                    <td><button className="btn btn-ghost btn-sm">⋯</button></td>
+                    <td><span className="status-badge" style={{ background: u.role === 'admin' ? "var(--filo-green-pale)" : "var(--filo-offwhite)", color: u.role === 'admin' ? "var(--filo-green)" : "var(--filo-grey)" }}>{u.role || 'estimator'}</span></td>
+                    <td><span className="status-badge" style={{ background: u.is_active !== false ? "#D1FAE5" : "#FEE2E2", color: u.is_active !== false ? "#059669" : "#991B1B" }}>{u.is_active !== false ? 'Active' : 'Inactive'}</span></td>
+                    <td>{u.role !== 'admin' && <button className="btn btn-ghost btn-sm" onClick={() => handleRemove(u.id)}>Remove</button>}</td>
                   </tr>
-                ))}
+                  );
+                }) : (
+                  <tr><td colSpan={4} style={{ textAlign: "center", padding: 40, color: "var(--filo-grey)" }}>No team members yet.</td></tr>
+                )}
               </tbody>
             </table>
           </div>
         </div>
+        )}
       </div>
     </div>
   );
@@ -4489,7 +5154,12 @@ function OnboardingWizard({ onComplete }) {
       if (step === 7 && selectedCrm && crmApiKey.trim()) {
         try {
           await apiRef.current.crm.connect(selectedCrm, { apiKey: crmApiKey.trim() });
-        } catch (e) { console.log('CRM connect during onboarding:', e.message); }
+        } catch (e) {
+          setError(`CRM connection failed: ${e.message}. You can configure this later in Settings.`);
+          setTimeout(() => { setError(null); setStep(s => s + 1); }, 3000);
+          setSaving(false);
+          return;
+        }
       }
       if (Object.keys(fields).length > 0) {
         await apiRef.current.company.update(fields);
@@ -4498,7 +5168,9 @@ function OnboardingWizard({ onComplete }) {
       // Upload logo if selected on step 1
       if (step === 1 && logoFile) {
         try {
-          await apiRef.current.files.upload(logoFile, 'logo');
+          const result = await apiRef.current.files.upload(logoFile, 'logo');
+          const logoUrl = result?.cdn_url || result?.url;
+          if (logoUrl) await apiRef.current.company.update({ logo_url: logoUrl });
         } catch (e) { console.log('Logo upload:', e.message); }
       }
       // Import nursery list on step 4
@@ -4528,7 +5200,7 @@ function OnboardingWizard({ onComplete }) {
         // Send invites
         for (const inv of invites) {
           if (inv.email.trim()) {
-            try { await apiRef.current.auth.invite({ email: inv.email, role: inv.role }); } catch (e) { console.log('Invite error:', e.message); }
+            try { await apiRef.current.auth.invite({ email: inv.email, firstName: inv.name?.split(' ')[0] || 'Team', lastName: inv.name?.split(' ').slice(1).join(' ') || 'Member', role: inv.role }); } catch (e) { console.log('Invite error:', e.message); }
           }
         }
         // Mark onboarding complete
@@ -4769,7 +5441,16 @@ export default function App() {
   const [view, setView] = useState(inviteToken ? "invite" : "loading"); // loading | invite | login | register | forgot-password | forgot-email | onboarding | app
   const [user, setUser] = useState(null);
   const [page, setPage] = useState("projects");
+  const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [subscriptionLocked, setSubscriptionLocked] = useState(false);
+
+  // Listen for subscription lockout events from apiFetch
+  useEffect(() => {
+    const handler = () => setSubscriptionLocked(true);
+    window.addEventListener('filo:subscription-locked', handler);
+    return () => window.removeEventListener('filo:subscription-locked', handler);
+  }, []);
 
   // Check for existing session on mount
   useEffect(() => {
@@ -4821,8 +5502,12 @@ export default function App() {
     setView("login");
   };
 
+  const openProject = (id) => { setSelectedProjectId(id); setPage("project-detail"); };
+
   const pages = {
-    projects: <ProjectsPage setPage={setPage} />,
+    dashboard: <DashboardPage setPage={setPage} openProject={openProject} />,
+    projects: <ProjectsPage setPage={setPage} openProject={openProject} />,
+    "project-detail": <ProjectDetailPage projectId={selectedProjectId} setPage={setPage} />,
     "new-project": <ErrorBoundary><NewProjectPage /></ErrorBoundary>,
     clients: <ClientsPage />,
     plants: <PlantLibraryPage />,
@@ -4900,6 +5585,25 @@ export default function App() {
             {pages[page] || pages.projects}
           </div>
         </div>
+        {subscriptionLocked && (
+          <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ background: "white", borderRadius: "var(--radius-lg, 12px)", padding: 40, maxWidth: 480, width: "90%", textAlign: "center" }}>
+              <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
+              <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 700, marginBottom: 8 }}>Account Locked</h2>
+              <p style={{ color: "var(--filo-grey, #6B7280)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+                Your subscription has lapsed. Update your payment method to restore access. You can still export your data from the Billing page.
+              </p>
+              <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+                <button className="btn btn-primary" onClick={() => { setSubscriptionLocked(false); setPage("billing"); }}>
+                  Go to Billing
+                </button>
+                <button className="btn btn-secondary" onClick={handleLogout}>
+                  Log Out
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </AppContext.Provider>
     </>
   );
