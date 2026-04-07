@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
-import { plants as plantsApi } from "./api.js";
+import { plants as plantsApi, submittals as submittalsApi } from "./api.js";
 
 // ═══════════════════════════════════════════════════════════════════
 // FILO — AI-Powered Landscape Design Platform
@@ -34,19 +34,57 @@ const MOCK_PROJECTS = import.meta.env.DEV ? [
   { id: "PRJ-004", client: "Williams Home", address: "3310 Piping Rock Ln", status: "completed", areas: ["Front Yard", "Back Yard", "Side Yard"], date: "2026-03-10", total: 34200 },
 ] : [];
 
+const MOCK_ESTIMATE = import.meta.env.DEV ? {
+  id: "EST-001",
+  project_id: "PRJ-001",
+  status: "draft",
+  tax_rate: 0.0825,
+  tax_enabled: true,
+  material_markup: 35,
+  subtotal: 8747.08,
+  tax_amount: 721.63,
+  total: 9468.71,
+  line_items: [
+    { id: 1, category: "plant_material", description: "Loropetalum 'Purple Diamond' (3-gal)", botanical: "Loropetalum chinense", container_size: "3-gal", quantity: 5, unit: "ea", unit_price: 38.48, wholesale_price: 28.50, retail_price: 38.48, total_price: 192.38, sort_order: 0 },
+    { id: 2, category: "plant_material", description: "Indian Hawthorn 'Clara' (3-gal)", botanical: "Rhaphiolepis indica", container_size: "3-gal", quantity: 8, unit: "ea", unit_price: 29.70, wholesale_price: 22.00, retail_price: 29.70, total_price: 237.60, sort_order: 1 },
+    { id: 3, category: "plant_material", description: "Gulf Muhly Grass (1-gal)", botanical: "Muhlenbergia capillaris", container_size: "1-gal", quantity: 12, unit: "ea", unit_price: 16.88, wholesale_price: 12.50, retail_price: 16.88, total_price: 202.50, sort_order: 2 },
+    { id: 4, category: "plant_material", description: "Dwarf Yaupon Holly (3-gal)", botanical: "Ilex vomitoria 'Nana'", container_size: "3-gal", quantity: 6, unit: "ea", unit_price: 32.40, wholesale_price: 24.00, retail_price: 32.40, total_price: 194.40, sort_order: 3 },
+    { id: 5, category: "plant_material", description: "Knockout Rose 'Double Red' (3-gal)", botanical: "Rosa x 'Radtko'", container_size: "3-gal", quantity: 4, unit: "ea", unit_price: 35.10, wholesale_price: 26.00, retail_price: 35.10, total_price: 140.40, sort_order: 4 },
+    { id: 6, category: "plant_material", description: "Ligustrum 'Sunshine' (5-gal)", botanical: "Ligustrum sinense", container_size: "5-gal", quantity: 3, unit: "ea", unit_price: 51.30, wholesale_price: 38.00, retail_price: 51.30, total_price: 153.90, sort_order: 5 },
+    { id: 7, category: "plant_material", description: "Crape Myrtle 'Natchez' (15-gal)", botanical: "Lagerstroemia indica", container_size: "15-gal", quantity: 2, unit: "ea", unit_price: 195.75, wholesale_price: 145.00, retail_price: 195.75, total_price: 391.50, sort_order: 6 },
+    { id: 8, category: "plant_material", description: "Asiatic Jasmine (1-gal)", botanical: "Trachelospermum asiaticum", container_size: "1-gal", quantity: 24, unit: "ea", unit_price: 11.48, wholesale_price: 8.50, retail_price: 11.48, total_price: 275.40, sort_order: 7 },
+    { id: 9, category: "labor", description: "Installation Labor", quantity: 1, unit: "ea", unit_price: 4800, total_price: 4800, sort_order: 8 },
+    { id: 10, category: "soil_amendment", description: "Soil Amendments", quantity: 1, unit: "ea", unit_price: 285, total_price: 285, sort_order: 9 },
+    { id: 11, category: "mulch", description: "Hardwood Mulch", quantity: 1, unit: "ea", unit_price: 340, total_price: 340, sort_order: 10 },
+    { id: 12, category: "edging", description: "Steel Edging", quantity: 1, unit: "ea", unit_price: 480, total_price: 480, sort_order: 11 },
+    { id: 13, category: "delivery", description: "Delivery", quantity: 1, unit: "ea", unit_price: 150, total_price: 150, sort_order: 12 },
+    { id: 14, category: "removal_disposal", description: "Plant Removal & Disposal (lump sum)", quantity: 1, unit: "ea", unit_price: 350, total_price: 350, sort_order: 13 },
+  ],
+} : null;
+
 const STATUS_MAP = {
   photo_upload: { label: "Photos", color: "#6B7280", step: 1 },
   plant_detection: { label: "Bed Prep", color: "#F59E0B", step: 2 },
   design_questionnaire: { label: "Questionnaire", color: "#8B5CF6", step: 3 },
   design_generation: { label: "Designing", color: "#3B82F6", step: 4 },
   design_review: { label: "Review", color: "#EC4899", step: 5 },
-  estimate_pending: { label: "Estimate", color: "#F97316", step: 5 },
+  estimate_pending: { label: "Estimate", color: "#F97316", step: 6 },
   estimate_approved: { label: "Approved", color: "#10B981", step: 6 },
   submittal_sent: { label: "Submitted", color: "#06B6D4", step: 7 },
   completed: { label: "Complete", color: "#059669", step: 8 },
 };
 
-const CRM_OPTIONS = ["Jobber", "ServiceTitan", "LMN", "Aspire", "SingleOps", "Housecall Pro", "Arborgold", "Service Autopilot", "Yardbook"];
+const CRM_OPTIONS = [
+  { id: "jobber", name: "Jobber" },
+  { id: "servicetitan", name: "ServiceTitan" },
+  { id: "lmn", name: "LMN" },
+  { id: "aspire", name: "Aspire" },
+  { id: "singleops", name: "SingleOps" },
+  { id: "housecall_pro", name: "Housecall Pro" },
+  { id: "arborgold", name: "Arborgold" },
+  { id: "service_autopilot", name: "Service Autopilot" },
+  { id: "yardbook", name: "Yardbook" },
+];
 
 // ─── Error Boundary ─────────────────────────────────────────────
 class ErrorBoundary extends React.Component {
@@ -756,18 +794,15 @@ function NewProjectPage() {
   const [drawToolMode, setDrawToolMode] = useState('freehand'); // 'freehand' | 'polygon'
   const [polygonPoints, setPolygonPoints] = useState([]); // current polygon being drawn
 
-  // Bed Edge tool state
-  const [bedPrepSubStep, setBedPrepSubStep] = useState('removal'); // 'removal' | 'bedEdge'
-  const [bedEdgePath, setBedEdgePath] = useState([]);
-  const [bedEdgeDrawing, setBedEdgeDrawing] = useState(false);
-  const bedEdgeDrawingRef = useRef(false);
-  const [bedEdgeCurrentPath, setBedEdgeCurrentPath] = useState([]);
-  const bedEdgeCurrentPathRef = useRef([]);
-  const [bedEdgeStyle, setBedEdgeStyle] = useState('rounded'); // 'square' | 'rounded'
-  const [bedEdgeAdjustment, setBedEdgeAdjustment] = useState(0); // -10 to +10 feet
+  // Bed Edge tool state (canvas-based)
+  const [bedPrepSubStep, setBedPrepSubStep] = useState('removal');
+  const [bedEdgePath, setBedEdgePath] = useState([]); // completed edge [{x,y}] as 0-100%
+  const [bedEdgeStyle, setBedEdgeStyle] = useState('rounded');
   const [bedEdgePreview, setBedEdgePreview] = useState(null);
   const bedEdgePreviewRef = useRef(null);
   const [generatingBedEdge, setGeneratingBedEdge] = useState(false);
+  const bedEdgeCanvasRef = useRef(null);
+  const bedEdgeDrawRef = useRef({ active: false, points: [] });
   const [designRenderUrl, setDesignRenderUrl] = useState(null);
   const [adjustPin, setAdjustPin] = useState(null); // { x: %, y: % }
   const [adjustPrompt, setAdjustPrompt] = useState('');
@@ -805,7 +840,7 @@ function NewProjectPage() {
   const [designPlants, setDesignPlants] = useState(saved?.designPlants || []);
   const [chatMessages, setChatMessages] = useState(saved?.chatMessages || []);
   const [chatInput, setChatInput] = useState("");
-  const [estimate, setEstimate] = useState(saved?.estimate || null);
+  const [estimate, setEstimate] = useState(saved?.estimate || MOCK_ESTIMATE);
   const [estimateApproved, setEstimateApproved] = useState(saved?.estimateApproved || false);
   const [submittal, setSubmittal] = useState(saved?.submittal || null);
   const [exportData, setExportData] = useState(saved?.exportData || null);
@@ -834,6 +869,50 @@ function NewProjectPage() {
     };
     try { localStorage.setItem('filo_wizard_checkpoint', JSON.stringify(checkpoint)); } catch (e) { /* quota */ }
   }, [step, project, clientId, projectId, areaMap, uploadedPhotos, detectedPlants, plantMarks, removalCost, design, designPlants, chatMessages, estimate, estimateApproved, submittal, exportData]);
+
+  // ─── Bed edge canvas redraw on state changes ───
+  useEffect(() => {
+    const canvas = bedEdgeCanvasRef.current;
+    if (!canvas) return;
+    const container = canvas.parentElement;
+    if (!container) return;
+    if (canvas.width !== container.clientWidth || canvas.height !== container.clientHeight) {
+      canvas.width = container.clientWidth;
+      canvas.height = container.clientHeight;
+    }
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    const px = (pt) => ({ x: pt.x / 100 * w, y: pt.y / 100 * h });
+
+    if (bedEdgePath.length > 1) {
+      ctx.strokeStyle = '#E97A1F'; ctx.lineWidth = 3; ctx.setLineDash([]);
+      ctx.beginPath();
+      const p0 = px(bedEdgePath[0]); ctx.moveTo(p0.x, p0.y);
+      for (let i = 1; i < bedEdgePath.length; i++) { const p = px(bedEdgePath[i]); ctx.lineTo(p.x, p.y); }
+      ctx.stroke();
+    }
+    if (polygonPoints.length > 0 && bedEdgePath.length === 0) {
+      if (polygonPoints.length > 1) {
+        ctx.strokeStyle = '#E97A1F'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        const p0 = px(polygonPoints[0]); ctx.moveTo(p0.x, p0.y);
+        for (let i = 1; i < polygonPoints.length; i++) { const p = px(polygonPoints[i]); ctx.lineTo(p.x, p.y); }
+        ctx.stroke(); ctx.setLineDash([]);
+      }
+      if (polygonPoints.length > 2) {
+        ctx.fillStyle = 'rgba(233,122,31,0.1)'; ctx.beginPath();
+        const p0 = px(polygonPoints[0]); ctx.moveTo(p0.x, p0.y);
+        for (let i = 1; i < polygonPoints.length; i++) { const p = px(polygonPoints[i]); ctx.lineTo(p.x, p.y); }
+        ctx.closePath(); ctx.fill();
+      }
+      polygonPoints.forEach((pt, i) => {
+        const p = px(pt); ctx.beginPath(); ctx.arc(p.x, p.y, i === 0 ? 10 : 4, 0, Math.PI * 2);
+        ctx.fillStyle = i === 0 ? '#E97A1F' : '#fff'; ctx.fill();
+        ctx.strokeStyle = '#E97A1F'; ctx.lineWidth = i === 0 ? 2 : 1.5; ctx.stroke();
+      });
+    }
+  }, [bedEdgePath, polygonPoints, bedPrepSubStep]);
 
   const totalSteps = 8;
   const stepTitles = ["Client Info", "Property Areas", "Photo Upload", "Bed Preparation", "AI Design", "Estimate", "Submittal", "CRM Push"];
@@ -1029,9 +1108,14 @@ function NewProjectPage() {
             }
             try {
               const sub = await api.projects.generateSubmittal(projectId);
-              setSubmittal(sub.submittal || sub);
+              const raw = sub.submittal || sub;
+              // Normalize scope_narrative -> narrative for frontend use
+              if (raw.scope_narrative && !raw.narrative) raw.narrative = raw.scope_narrative;
+              setSubmittal(raw);
             } catch (e) {
               console.log("Submittal generation error:", e.message);
+              alert('Submittal generation failed: ' + e.message);
+              return; // Don't advance to step 8 on failure
             }
           }
           setStep(8);
@@ -1041,6 +1125,9 @@ function NewProjectPage() {
           // CRM Push + Final completion
           if (projectId) {
             await api.projects.updateStatus(projectId, 'completed');
+            try {
+              await api.crm.syncProject(projectId);
+            } catch (e) { console.log("CRM sync:", e.message); }
             try {
               const exp = await api.projects.exportAll(projectId);
               setExportData(exp);
@@ -1316,7 +1403,7 @@ function NewProjectPage() {
           const api = apiRef.current;
           const photoUrls = Object.values(uploadedPhotos || {}).flat().map(p => p?.file?.cdn_url || p?.cdn_url).filter(Boolean);
           const getDrawPoint = (e) => {
-            const svg = e.currentTarget || e.target?.closest?.('svg');
+            const svg = e.target?.closest?.('svg') || e.currentTarget;
             if (!svg) return null;
             const rect = svg.getBoundingClientRect();
             const clientX = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
@@ -1411,74 +1498,161 @@ function NewProjectPage() {
             } finally { setGeneratingPreview(false); }
           };
 
-          // Bed edge drawing handlers
+          // ── Bed edge: canvas-based drawing ──
           const getBedEdgePoint = (e) => {
-            const svg = e.currentTarget || e.target?.closest?.('svg');
-            if (!svg) return null;
-            const rect = svg.getBoundingClientRect();
-            const clientX = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
-            const clientY = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
-            return { x: (clientX - rect.left) / rect.width * 1000, y: (clientY - rect.top) / rect.height * 1000 };
+            const canvas = bedEdgeCanvasRef.current;
+            if (!canvas) return null;
+            const rect = canvas.getBoundingClientRect();
+            return {
+              x: (e.clientX - rect.left) / rect.width * 100,
+              y: (e.clientY - rect.top) / rect.height * 100,
+            };
           };
-          const startBedEdgeDraw = (e) => {
-            if (e.type === 'touchstart') e.preventDefault();
+
+          const redrawBedEdgeCanvas = (livePoints) => {
+            const canvas = bedEdgeCanvasRef.current;
+            if (!canvas) return;
+            const container = canvas.parentElement;
+            if (!container) return;
+            if (canvas.width !== container.clientWidth || canvas.height !== container.clientHeight) {
+              canvas.width = container.clientWidth;
+              canvas.height = container.clientHeight;
+            }
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width, h = canvas.height;
+            ctx.clearRect(0, 0, w, h);
+            const px = (pt) => ({ x: pt.x / 100 * w, y: pt.y / 100 * h });
+
+            // Completed bed edge path — solid orange
+            if (bedEdgePath.length > 1) {
+              ctx.strokeStyle = '#E97A1F';
+              ctx.lineWidth = 3;
+              ctx.setLineDash([]);
+              ctx.beginPath();
+              const p0 = px(bedEdgePath[0]);
+              ctx.moveTo(p0.x, p0.y);
+              for (let i = 1; i < bedEdgePath.length; i++) { const p = px(bedEdgePath[i]); ctx.lineTo(p.x, p.y); }
+              ctx.stroke();
+            }
+
+            // In-progress freehand path — dashed orange
+            const pts = livePoints || bedEdgeDrawRef.current.points;
+            if (pts.length > 1 && drawToolMode === 'freehand') {
+              ctx.strokeStyle = '#E97A1F';
+              ctx.lineWidth = 2;
+              ctx.setLineDash([6, 4]);
+              ctx.beginPath();
+              const p0 = px(pts[0]);
+              ctx.moveTo(p0.x, p0.y);
+              for (let i = 1; i < pts.length; i++) { const p = px(pts[i]); ctx.lineTo(p.x, p.y); }
+              ctx.stroke();
+              ctx.setLineDash([]);
+            }
+
+            // Polygon mode — lines + fill + point circles
+            if (polygonPoints.length > 0 && drawToolMode === 'polygon' && bedEdgePath.length === 0) {
+              if (polygonPoints.length > 1) {
+                ctx.strokeStyle = '#E97A1F';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([6, 4]);
+                ctx.beginPath();
+                const p0 = px(polygonPoints[0]);
+                ctx.moveTo(p0.x, p0.y);
+                for (let i = 1; i < polygonPoints.length; i++) { const p = px(polygonPoints[i]); ctx.lineTo(p.x, p.y); }
+                ctx.stroke();
+                ctx.setLineDash([]);
+              }
+              if (polygonPoints.length > 2) {
+                ctx.fillStyle = 'rgba(233,122,31,0.1)';
+                ctx.beginPath();
+                const p0 = px(polygonPoints[0]);
+                ctx.moveTo(p0.x, p0.y);
+                for (let i = 1; i < polygonPoints.length; i++) { const p = px(polygonPoints[i]); ctx.lineTo(p.x, p.y); }
+                ctx.closePath();
+                ctx.fill();
+              }
+              polygonPoints.forEach((pt, i) => {
+                const p = px(pt);
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, i === 0 ? 10 : 4, 0, Math.PI * 2);
+                ctx.fillStyle = i === 0 ? '#E97A1F' : '#fff';
+                ctx.fill();
+                ctx.strokeStyle = '#E97A1F';
+                ctx.lineWidth = i === 0 ? 2 : 1.5;
+                ctx.stroke();
+              });
+            }
+          };
+
+          const onBedEdgePointerDown = (e) => {
+            if (bedEdgePath.length > 0) return; // already drawn — clear first
+            e.preventDefault();
             const pt = getBedEdgePoint(e);
             if (!pt) return;
-            bedEdgeDrawingRef.current = true;
-            setBedEdgeDrawing(true);
-            bedEdgeCurrentPathRef.current = [pt];
-            setBedEdgeCurrentPath([pt]);
+            if (drawToolMode === 'polygon') {
+              if (polygonPoints.length >= 3) {
+                const first = polygonPoints[0];
+                if (Math.sqrt((pt.x - first.x) ** 2 + (pt.y - first.y) ** 2) < 5) {
+                  setBedEdgePath([...polygonPoints]);
+                  setPolygonPoints([]);
+                  return;
+                }
+              }
+              setPolygonPoints(prev => [...prev, pt]);
+            } else {
+              bedEdgeDrawRef.current = { active: true, points: [pt] };
+              bedEdgeCanvasRef.current?.setPointerCapture(e.pointerId);
+            }
           };
-          const moveBedEdgeDraw = (e) => {
-            if (!bedEdgeDrawingRef.current) return;
-            if (e.type === 'touchmove') e.preventDefault();
+
+          const onBedEdgePointerMove = (e) => {
+            if (!bedEdgeDrawRef.current.active) return;
+            e.preventDefault();
             const pt = getBedEdgePoint(e);
             if (!pt) return;
-            bedEdgeCurrentPathRef.current = [...bedEdgeCurrentPathRef.current, pt];
-            setBedEdgeCurrentPath(bedEdgeCurrentPathRef.current);
+            bedEdgeDrawRef.current.points.push(pt);
+            redrawBedEdgeCanvas(bedEdgeDrawRef.current.points);
           };
-          const endBedEdgeDraw = () => {
-            const finalPath = bedEdgeCurrentPathRef.current;
-            if (finalPath.length > 3) setBedEdgePath(finalPath);
-            bedEdgeDrawingRef.current = false;
-            setBedEdgeDrawing(false);
-            bedEdgeCurrentPathRef.current = [];
-            setBedEdgeCurrentPath([]);
+
+          const onBedEdgePointerUp = () => {
+            if (!bedEdgeDrawRef.current.active) return;
+            const pts = bedEdgeDrawRef.current.points;
+            bedEdgeDrawRef.current = { active: false, points: [] };
+            if (pts.length > 3) setBedEdgePath(pts);
           };
+
+          // Mask generation for AI bed edge preview (1024x1024 PNG)
           const getBedEdgeMaskDataUrl = () => {
             if (!bedEdgePath || bedEdgePath.length < 3) return null;
-            const canvas = document.createElement('canvas');
-            canvas.width = 1024; canvas.height = 1024;
-            const ctx = canvas.getContext('2d');
+            const c = document.createElement('canvas');
+            c.width = 1024; c.height = 1024;
+            const ctx = c.getContext('2d');
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, 1024, 1024);
             ctx.fillStyle = '#000000';
             ctx.beginPath();
-            ctx.moveTo(bedEdgePath[0].x * 1.024, bedEdgePath[0].y * 1.024);
+            ctx.moveTo(bedEdgePath[0].x / 100 * 1024, bedEdgePath[0].y / 100 * 1024);
             for (let i = 1; i < bedEdgePath.length; i++) {
-              ctx.lineTo(bedEdgePath[i].x * 1.024, bedEdgePath[i].y * 1.024);
+              ctx.lineTo(bedEdgePath[i].x / 100 * 1024, bedEdgePath[i].y / 100 * 1024);
             }
             ctx.closePath();
             ctx.fill();
-            return canvas.toDataURL('image/png');
+            return c.toDataURL('image/png');
           };
+
           const generateBedEdge = async () => {
             if (!api || generatingBedEdge || bedEdgePath.length < 3) return;
             setGeneratingBedEdge(true);
             try {
               const maskDataUrl = getBedEdgeMaskDataUrl();
-              // Use localStorage for removal preview (immune to stale closures)
               const lsRemoval = (() => { try { return localStorage.getItem('filo_removal_preview'); } catch(e) { return null; } })();
               const basePhoto = lsRemoval || removalPreview || photoUrls[0];
-              console.log('[bed-edge-gen] Base photo source:', lsRemoval ? 'REMOVAL PREVIEW (localStorage)' : removalPreview ? 'REMOVAL PREVIEW (state)' : 'ORIGINAL PHOTO');
               if (!basePhoto) { alert('No photo available — upload a photo first'); setGeneratingBedEdge(false); return; }
-              console.log('[bed-edge-gen] Calling API with mask:', !!maskDataUrl, 'style:', bedEdgeStyle);
-              const result = await api.bedEdgePreview.generate(basePhoto, maskDataUrl, bedEdgeStyle, bedEdgeAdjustment);
-              console.log('[bed-edge-gen] API returned, previewUrl length:', result?.previewUrl?.length || 0);
+              const result = await api.bedEdgePreview.generate(basePhoto, maskDataUrl, bedEdgeStyle, 0);
               if (!result?.previewUrl) throw new Error('No preview image returned from server');
               setBedEdgePreview(result.previewUrl);
               bedEdgePreviewRef.current = result.previewUrl;
-              try { localStorage.setItem('filo_bed_edge_preview', result.previewUrl); } catch (e) { console.warn('[bed-edge-gen] localStorage save failed:', e.message); }
+              try { localStorage.setItem('filo_bed_edge_preview', result.previewUrl); } catch (e) {}
             } catch (err) {
               console.error('Bed edge generation failed:', err.message);
               alert('Bed edge generation failed: ' + err.message);
@@ -1642,10 +1816,10 @@ function NewProjectPage() {
                       </>
                     )}
 
-                    {/* ═══ SUB-STEP B: Bed Edge ═══ */}
+                    {/* ═══ SUB-STEP B: Bed Edge (canvas-based) ═══ */}
                     {bedPrepSubStep === 'bedEdge' && (
                       <>
-                        {/* Edge style option */}
+                        {/* Edge style */}
                         <div style={{ marginBottom: 16 }}>
                           <label style={{ fontSize: 11, fontWeight: 600, color: "var(--filo-charcoal)", display: "block", marginBottom: 4 }}>Edge Style</label>
                           <div className="pill-group">
@@ -1656,7 +1830,7 @@ function NewProjectPage() {
                           </div>
                         </div>
 
-                        {/* Draw mode toggle */}
+                        {/* Draw mode */}
                         <div style={{ marginBottom: 12 }}>
                           <label style={{ fontSize: 11, fontWeight: 600, color: "var(--filo-charcoal)", display: "block", marginBottom: 4 }}>Draw Mode</label>
                           <div className="pill-group">
@@ -1672,38 +1846,39 @@ function NewProjectPage() {
                           {bedEdgePath.length > 0 && (
                             <>
                               <span style={{ fontSize: 12, fontWeight: 600, color: "var(--filo-green)" }}>✓ Bed edge drawn</span>
-                              <button className="btn btn-sm btn-ghost" onClick={() => { setBedEdgePath([]); setBedEdgePreview(null); bedEdgePreviewRef.current = null; try { localStorage.removeItem('filo_bed_edge_preview'); } catch(e){} }}>
-                                Clear & Redraw
-                              </button>
+                              <button className="btn btn-sm btn-ghost" onClick={() => {
+                                setBedEdgePath([]); setBedEdgePreview(null); bedEdgePreviewRef.current = null;
+                                try { localStorage.removeItem('filo_bed_edge_preview'); } catch(e){}
+                                setTimeout(() => redrawBedEdgeCanvas(), 0);
+                              }}>Clear & Redraw</button>
                             </>
                           )}
-                          {bedEdgePath.length === 0 && !bedEdgeDrawing && polygonPoints.length === 0 && (
+                          {bedEdgePath.length === 0 && polygonPoints.length === 0 && (
                             <span style={{ fontSize: 12, color: "var(--filo-grey)" }}>
-                              Draw the bed perimeter below, then generate
+                              {drawToolMode === 'polygon' ? 'Click to place points — click near first point to close' : 'Draw the bed perimeter below'}
                             </span>
                           )}
                           {polygonPoints.length >= 3 && bedEdgePath.length === 0 && drawToolMode === 'polygon' && (
                             <>
                               <span style={{ fontSize: 12, fontWeight: 600, color: "var(--filo-green)" }}>{polygonPoints.length} points placed</span>
-                              <button className="btn btn-sm" onClick={() => {
-                                setBedEdgePath([...polygonPoints]);
-                                setPolygonPoints([]);
-                              }} style={{ background: 'var(--filo-green)', color: '#fff', border: 'none', fontWeight: 600, padding: '6px 16px' }}>
+                              <button className="btn btn-sm" onClick={() => { setBedEdgePath([...polygonPoints]); setPolygonPoints([]); }}
+                                style={{ background: 'var(--filo-green)', color: '#fff', border: 'none', fontWeight: 600, padding: '6px 16px' }}>
                                 Close Polygon
                               </button>
-                              <button className="btn btn-sm btn-ghost" onClick={() => setPolygonPoints([])}>
-                                Clear
-                              </button>
+                              <button className="btn btn-sm btn-ghost" onClick={() => { setPolygonPoints([]); setTimeout(() => redrawBedEdgeCanvas(), 0); }}>Clear</button>
                             </>
                           )}
-                        </div>
-                        {/* Action buttons row */}
-                        <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
+                          <div style={{ flex: 1 }} />
                           {bedEdgePreview && (
-                            <button className="btn btn-sm" onClick={() => { setBedEdgePreview(null); bedEdgePreviewRef.current = null; try { localStorage.removeItem('filo_bed_edge_preview'); } catch(e){} }} style={{ fontWeight: 600 }}>
-                              ← Back to Draw
-                            </button>
+                            <button className="btn btn-sm" onClick={() => {
+                              setBedEdgePreview(null); bedEdgePreviewRef.current = null;
+                              try { localStorage.removeItem('filo_bed_edge_preview'); } catch(e){}
+                            }} style={{ fontWeight: 600 }}>← Back to Draw</button>
                           )}
+                        </div>
+
+                        {/* Action buttons */}
+                        <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
                           {bedEdgePreview && (
                             <button className="btn btn-sm" onClick={generateBedEdge} disabled={generatingBedEdge}
                               style={{ background: 'var(--filo-green)', color: '#fff', border: 'none', fontWeight: 600, padding: '8px 16px' }}>
@@ -1718,12 +1893,12 @@ function NewProjectPage() {
                           )}
                         </div>
 
-                        {/* Bed edge preview result OR drawing canvas */}
+                        {/* Bed edge preview OR drawing canvas */}
                         {bedEdgePreview ? (
                           <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 12 }}>
                             <img src={bedEdgePreview} alt="Bed Edge Preview" style={{ width: "100%", display: "block" }} />
                             <div style={{ position: "absolute", top: 12, left: 12, background: "var(--filo-green)", color: "#fff", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
-                              BED EDGE {bedEdgeStyle === 'square' ? '90°' : 'CURVED'}{bedEdgeAdjustment !== 0 ? ` · ${bedEdgeAdjustment > 0 ? '+' : ''}${bedEdgeAdjustment} ft` : ''}
+                              BED EDGE {bedEdgeStyle === 'square' ? '90°' : 'CURVED'}
                             </div>
                             <div style={{ position: "absolute", top: 12, right: 12, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "4px 10px", borderRadius: 4, fontSize: 10, fontWeight: 700 }}>FILO AI</div>
                           </div>
@@ -1732,84 +1907,24 @@ function NewProjectPage() {
                             position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden", marginBottom: 12,
                             border: bedEdgePath.length > 0 ? '1px solid #E5E7EB' : '2px dashed #D1D5DB',
                             cursor: bedEdgePath.length > 0 ? 'default' : 'crosshair', userSelect: "none",
+                            touchAction: 'none',
                           }}>
-                            <img src={removalPreview || photoUrls[0]} alt="Property" style={{ width: "100%", display: "block", pointerEvents: "none" }} draggable={false} />
-                            <svg
+                            <img src={removalPreview || photoUrls[0]} alt="Property"
+                              style={{ width: "100%", display: "block", pointerEvents: "none" }} draggable={false}
+                              onLoad={() => setTimeout(() => redrawBedEdgeCanvas(), 0)} />
+                            <canvas
+                              ref={bedEdgeCanvasRef}
                               style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", zIndex: 5 }}
-                              viewBox="0 0 1000 1000" preserveAspectRatio="none"
-                              onMouseDown={(e) => {
-                                if (drawToolMode === 'polygon') {
-                                  const pt = getBedEdgePoint(e);
-                                  if (!pt) return;
-                                  // If clicking near first point and we have 3+, close polygon
-                                  if (polygonPoints.length >= 3) {
-                                    const first = polygonPoints[0];
-                                    const dist = Math.sqrt((pt.x - first.x) ** 2 + (pt.y - first.y) ** 2);
-                                    if (dist < 50) {
-                                      setBedEdgePath([...polygonPoints]);
-                                      setPolygonPoints([]);
-                                      return;
-                                    }
-                                  }
-                                  setPolygonPoints(prev => [...prev, pt]);
-                                } else {
-                                  startBedEdgeDraw(e);
-                                }
-                              }}
-                              onMouseMove={drawToolMode === 'freehand' ? moveBedEdgeDraw : undefined}
-                              onMouseUp={drawToolMode === 'freehand' ? endBedEdgeDraw : undefined}
-                              onMouseLeave={drawToolMode === 'freehand' ? endBedEdgeDraw : undefined}
-                              onTouchStart={(e) => {
-                                if (drawToolMode === 'polygon') {
-                                  e.preventDefault();
-                                  const pt = getBedEdgePoint(e);
-                                  if (!pt) return;
-                                  if (polygonPoints.length >= 3) {
-                                    const first = polygonPoints[0];
-                                    const dist = Math.sqrt((pt.x - first.x) ** 2 + (pt.y - first.y) ** 2);
-                                    if (dist < 50) {
-                                      setBedEdgePath([...polygonPoints]);
-                                      setPolygonPoints([]);
-                                      return;
-                                    }
-                                  }
-                                  setPolygonPoints(prev => [...prev, pt]);
-                                } else {
-                                  startBedEdgeDraw(e);
-                                }
-                              }}
-                              onTouchMove={drawToolMode === 'freehand' ? moveBedEdgeDraw : undefined}
-                              onTouchEnd={drawToolMode === 'freehand' ? endBedEdgeDraw : undefined}
-                            >
-                              {/* polygon overlay hidden once bed edge is drawn — user clicks Update Bed Edge to send to AI */}
-                              {bedEdgeCurrentPath.length > 1 && drawToolMode === 'freehand' && (
-                                <polyline points={bedEdgeCurrentPath.map(p => `${p.x},${p.y}`).join(' ')}
-                                  fill="none" stroke="var(--filo-green)" strokeWidth="2" strokeDasharray="6,4" />
-                              )}
-                              {/* Polygon mode: show points and connecting lines */}
-                              {polygonPoints.length > 0 && drawToolMode === 'polygon' && bedEdgePath.length === 0 && (
-                                <>
-                                  <polyline points={polygonPoints.map(p => `${p.x},${p.y}`).join(' ')}
-                                    fill={polygonPoints.length > 2 ? "rgba(34,197,94,0.08)" : "none"} stroke="var(--filo-green)" strokeWidth="2" strokeDasharray="6,4" />
-                                  {polygonPoints.map((p, i) => (
-                                    <circle key={i} cx={p.x} cy={p.y} r={i === 0 ? 14 : 5}
-                                      fill={i === 0 ? "var(--filo-green)" : "#fff"} stroke="var(--filo-green)" strokeWidth={i === 0 ? 2 : 1.5}
-                                      style={i === 0 && polygonPoints.length >= 3 ? { cursor: 'pointer', filter: 'drop-shadow(0 0 3px rgba(34,197,94,0.5))' } : {}} />
-                                  ))}
-                                </>
-                              )}
-                            </svg>
+                              onPointerDown={onBedEdgePointerDown}
+                              onPointerMove={onBedEdgePointerMove}
+                              onPointerUp={onBedEdgePointerUp}
+                            />
                           </div>
-                          {bedEdgePath.length === 0 && !bedEdgeDrawing && polygonPoints.length === 0 && (
-                            <div style={{ textAlign: "center", marginTop: 8, marginBottom: 4, color: "var(--filo-grey)", fontSize: 12, fontWeight: 500 }}>
-                              {drawToolMode === 'polygon' ? 'Click to place points — then click "Close Polygon" above' : 'Draw around the full bed perimeter'}
-                            </div>
-                          )}
                         )}
 
                         {bedEdgePreview && (
                           <div style={{ marginTop: 16, padding: 16, background: "var(--filo-green-pale)", borderRadius: "var(--radius-sm)", fontSize: 13, color: "var(--filo-green)" }}>
-                            ✅ Bed edge defined. Click "Save & Continue" to set your design preferences.
+                            Bed edge defined. Click "Save & Continue" to set your design preferences.
                           </div>
                         )}
                       </>
@@ -3163,29 +3278,84 @@ function EstimatesPage() {
 
 // ─── Submittals Page ─────────────────────────────────────────────
 function SubmittalsPage() {
+  const [submittals, setSubmittals] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const apiRef = useRef(null);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const mod = await import('./api.js');
+        apiRef.current = mod.default;
+        // Fetch all projects, then load submittals for each
+        const projects = await mod.default.projects.list();
+        const projectList = Array.isArray(projects) ? projects : projects.projects || [];
+        const allSubmittals = [];
+        for (const proj of projectList) {
+          try {
+            const subs = await mod.default.projects.listSubmittals(proj.id);
+            const subList = Array.isArray(subs) ? subs : [];
+            subList.forEach(s => allSubmittals.push({ ...s, clientName: proj.client_name || proj.clientName, address: proj.address }));
+          } catch { /* project may have no submittals */ }
+        }
+        setSubmittals(allSubmittals);
+      } catch (err) {
+        console.error('Failed to load submittals:', err.message);
+      } finally { setLoading(false); }
+    };
+    load();
+  }, []);
+
+  const handleDownload = async (sub) => {
+    if (sub.pdf_url) {
+      window.open(sub.pdf_url, '_blank');
+    } else {
+      try {
+        const result = await submittalsApi.generatePDF(sub.id);
+        if (result?.pdfUrl) {
+          window.open(result.pdfUrl, '_blank');
+          setSubmittals(prev => prev.map(s => s.id === sub.id ? { ...s, pdf_url: result.pdfUrl } : s));
+        }
+      } catch (err) { alert('PDF generation failed: ' + err.message); }
+    }
+  };
+
   return (
     <div className="fade-in">
       <div className="page-header">
         <div><h2>Submittals</h2><p>Professional design proposal documents</p></div>
       </div>
       <div className="page-body">
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
-          {MOCK_PROJECTS.slice(0, 3).map((p, i) => (
-            <div key={p.id} className="card fade-in" style={{ animationDelay: `${i * 0.08}s` }}>
-              <div style={{ height: 160, background: `linear-gradient(135deg, ${STATUS_MAP[p.status].color}22, var(--filo-green-pale))`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <span style={{ fontSize: 48 }}>📄</span>
-              </div>
-              <div className="card-body">
-                <div style={{ fontWeight: 600 }}>{p.client}</div>
-                <div style={{ fontSize: 13, color: "var(--filo-grey)" }}>{p.address}</div>
-                <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-                  <button className="btn btn-primary btn-sm" style={{ flex: 1 }}>📥 Download</button>
-                  <button className="btn btn-secondary btn-sm">📧 Email</button>
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 48, color: "var(--filo-grey)" }}>Loading submittals...</div>
+        ) : submittals.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 48, color: "var(--filo-grey)" }}>
+            No submittals yet. Complete a project through the design wizard to generate one.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+            {submittals.map((sub, i) => (
+              <div key={sub.id} className="card fade-in" style={{ animationDelay: `${i * 0.08}s` }}>
+                <div style={{ height: 160, background: `linear-gradient(135deg, var(--filo-green)22, var(--filo-green-pale))`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ fontSize: 48 }}>📄</span>
+                </div>
+                <div className="card-body">
+                  <div style={{ fontWeight: 600 }}>{sub.clientName || 'Client'}</div>
+                  <div style={{ fontSize: 13, color: "var(--filo-grey)" }}>{sub.address || ''}</div>
+                  <div style={{ fontSize: 12, color: "var(--filo-silver)", marginTop: 4 }}>
+                    {sub.created_at ? new Date(sub.created_at).toLocaleDateString() : ''}
+                    {sub.status ? ` • ${sub.status}` : ''}
+                  </div>
+                  <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+                    <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={() => handleDownload(sub)}>
+                      {sub.pdf_url ? '📥 Download' : '📄 Generate PDF'}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -3193,49 +3363,117 @@ function SubmittalsPage() {
 
 // ─── CRM Integration ─────────────────────────────────────────────
 function CRMPage() {
-  const [connected, setConnected] = useState("Jobber");
+  const [status, setStatus] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState(null);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [selectedProvider, setSelectedProvider] = useState(null);
+  const apiRef = useRef(null);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const mod = await import('./api.js');
+        apiRef.current = mod.default;
+        const result = await mod.crm.status();
+        setStatus(result);
+      } catch (err) {
+        console.error('CRM status load error:', err.message);
+      } finally { setLoading(false); }
+    };
+    load();
+  }, []);
+
+  const handleConnect = async (provider) => {
+    if (!apiRef.current || !apiKeyInput.trim()) return;
+    setConnecting(true);
+    setError(null);
+    try {
+      const result = await apiRef.current.crm.connect(provider.id, { apiKey: apiKeyInput.trim() });
+      setStatus({ connected: true, integration: result.integration });
+      setApiKeyInput('');
+      setSelectedProvider(null);
+    } catch (err) {
+      setError(err.message);
+    } finally { setConnecting(false); }
+  };
+
+  const handleDisconnect = async () => {
+    if (!apiRef.current) return;
+    try {
+      await apiRef.current.crm.disconnect();
+      setStatus({ connected: false, integration: null });
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const connectedProvider = status?.integration?.provider;
+  const connectedName = CRM_OPTIONS.find(c => c.id === connectedProvider)?.name || connectedProvider;
+  const lastSync = status?.integration?.last_sync_at;
+
   return (
     <div className="fade-in">
       <div className="page-header">
         <div><h2>CRM Integration</h2><p>Connect FILO to your CRM for seamless data sync</p></div>
       </div>
       <div className="page-body">
-        <div className="card" style={{ marginBottom: 24 }}>
-          <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Connected CRM</h3></div>
-          <div className="card-body">
-            <div style={{ display: "flex", alignItems: "center", gap: 16, padding: 16, background: "var(--filo-green-pale)", borderRadius: "var(--radius-sm)", marginBottom: 16 }}>
-              <span style={{ fontSize: 32 }}>✅</span>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 18 }}>{connected}</div>
-                <div style={{ fontSize: 13, color: "var(--filo-green)" }}>Connected • Last sync 2 minutes ago</div>
-              </div>
-              <button className="btn btn-secondary btn-sm" style={{ marginLeft: "auto" }}>Disconnect</button>
-            </div>
-            <div style={{ fontSize: 13, color: "var(--filo-grey)", padding: 12, background: "var(--filo-offwhite)", borderRadius: "var(--radius-sm)" }}>
-              ℹ️ One-way sync: FILO → CRM. Project data, estimates, and submittals are automatically pushed to your CRM. FILO never modifies existing CRM data.
-            </div>
-          </div>
-        </div>
+        {loading ? <p>Loading...</p> : (<>
+          {error && <div style={{ padding: 12, background: '#FEE2E2', borderRadius: 8, marginBottom: 16, color: '#991B1B', fontSize: 14 }}>{error}</div>}
 
-        <div className="card">
-          <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Available CRM Integrations</h3></div>
-          <div className="card-body">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
-              {CRM_OPTIONS.map(crm => (
-                <div key={crm} style={{
-                  padding: 16, border: `1px solid ${crm === connected ? "var(--filo-green)" : "var(--filo-light)"}`,
-                  borderRadius: "var(--radius-sm)", textAlign: "center", cursor: "pointer",
-                  background: crm === connected ? "var(--filo-green-pale)" : "white",
-                }} onClick={() => setConnected(crm)}>
-                  <div style={{ fontWeight: 500, marginBottom: 4 }}>{crm}</div>
-                  <div style={{ fontSize: 12, color: crm === connected ? "var(--filo-green)" : "var(--filo-grey)" }}>
-                    {crm === connected ? "✅ Connected" : "Click to connect"}
+          {status?.connected && (
+            <div className="card" style={{ marginBottom: 24 }}>
+              <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Connected CRM</h3></div>
+              <div className="card-body">
+                <div style={{ display: "flex", alignItems: "center", gap: 16, padding: 16, background: "var(--filo-green-pale)", borderRadius: "var(--radius-sm)", marginBottom: 16 }}>
+                  <span style={{ fontSize: 32 }}>✅</span>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 18 }}>{connectedName}</div>
+                    <div style={{ fontSize: 13, color: "var(--filo-green)" }}>
+                      Connected{lastSync ? ` • Last sync ${new Date(lastSync).toLocaleString()}` : ''}
+                    </div>
+                  </div>
+                  <button className="btn btn-secondary btn-sm" style={{ marginLeft: "auto" }} onClick={handleDisconnect}>Disconnect</button>
+                </div>
+                <div style={{ fontSize: 13, color: "var(--filo-grey)", padding: 12, background: "var(--filo-offwhite)", borderRadius: "var(--radius-sm)" }}>
+                  One-way sync: FILO → CRM. Project data, estimates, and submittals are pushed to your CRM. FILO never modifies existing CRM data.
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="card">
+            <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>{status?.connected ? 'Switch CRM' : 'Available CRM Integrations'}</h3></div>
+            <div className="card-body">
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
+                {CRM_OPTIONS.map(crm => (
+                  <div key={crm.id} style={{
+                    padding: 16, border: `1px solid ${crm.id === connectedProvider ? "var(--filo-green)" : selectedProvider?.id === crm.id ? "var(--filo-gold)" : "var(--filo-light)"}`,
+                    borderRadius: "var(--radius-sm)", textAlign: "center", cursor: "pointer",
+                    background: crm.id === connectedProvider ? "var(--filo-green-pale)" : "white",
+                  }} onClick={() => { if (crm.id !== connectedProvider) setSelectedProvider(crm); }}>
+                    <div style={{ fontWeight: 500, marginBottom: 4 }}>{crm.name}</div>
+                    <div style={{ fontSize: 12, color: crm.id === connectedProvider ? "var(--filo-green)" : "var(--filo-grey)" }}>
+                      {crm.id === connectedProvider ? "Connected" : "Click to connect"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {selectedProvider && selectedProvider.id !== connectedProvider && (
+                <div style={{ marginTop: 16, padding: 16, background: "var(--filo-offwhite)", borderRadius: "var(--radius-sm)" }}>
+                  <label className="form-label">{selectedProvider.name} API Key</label>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input className="form-input" placeholder="Paste your API key" value={apiKeyInput} onChange={e => setApiKeyInput(e.target.value)} style={{ flex: 1 }} />
+                    <button className="btn btn-primary" onClick={() => handleConnect(selectedProvider)} disabled={connecting || !apiKeyInput.trim()}>
+                      {connecting ? "Connecting..." : "Connect"}
+                    </button>
                   </div>
                 </div>
-              ))}
+              )}
             </div>
           </div>
-        </div>
+        </>)}
       </div>
     </div>
   );
@@ -3244,11 +3482,58 @@ function CRMPage() {
 // ─── Clients Page ────────────────────────────────────────────────
 function ClientsPage() {
   const clients = [
-    { name: "Johnson Residence", address: "4521 River Oaks Blvd", phone: "(713) 555-0199", projects: 2, total: 18450 },
-    { name: "Chen Family Estate", address: "1892 Memorial Dr", phone: "(713) 555-0244", projects: 1, total: 28900 },
-    { name: "Martinez Property", address: "7744 Tanglewood Ln", phone: "(713) 555-0177", projects: 3, total: 42600 },
-    { name: "Williams Home", address: "3310 Piping Rock Ln", phone: "(713) 555-0155", projects: 1, total: 34200 },
+    { name: "Johnson Residence", address: "4521 River Oaks Blvd", phone: "(713) 555-0199", email: "johnson@email.com", projects: 2, total: 18450 },
+    { name: "Chen Family Estate", address: "1892 Memorial Dr", phone: "(713) 555-0244", email: "chen@email.com", projects: 1, total: 28900 },
+    { name: "Martinez Property", address: "7744 Tanglewood Ln", phone: "(713) 555-0177", email: "martinez@email.com", projects: 3, total: 42600 },
+    { name: "Williams Home", address: "3310 Piping Rock Ln", phone: "(713) 555-0155", email: "williams@email.com", projects: 1, total: 34200 },
   ];
+
+  const [selected, setSelected] = useState(null);
+
+  if (selected) {
+    return (
+      <div className="fade-in">
+        <div className="page-header">
+          <div>
+            <button className="btn btn-ghost btn-sm" onClick={() => setSelected(null)} style={{ marginBottom: 8 }}>← Back to Clients</button>
+            <h2>{selected.name}</h2>
+            <p>{selected.address}</p>
+          </div>
+        </div>
+        <div className="page-body">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 24 }}>
+            <div className="card"><div className="card-body" style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 13, color: "var(--filo-grey)", marginBottom: 4 }}>Total Revenue</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: "var(--filo-green)" }}>{fmt(selected.total)}</div>
+            </div></div>
+            <div className="card"><div className="card-body" style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 13, color: "var(--filo-grey)", marginBottom: 4 }}>Projects</div>
+              <div style={{ fontSize: 24, fontWeight: 700 }}>{selected.projects}</div>
+            </div></div>
+          </div>
+          <div className="card">
+            <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>Contact Information</h3></div>
+            <div className="card-body">
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div>
+                  <div style={{ fontSize: 13, color: "var(--filo-grey)", marginBottom: 4 }}>Phone</div>
+                  <div style={{ fontWeight: 500 }}>{selected.phone}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 13, color: "var(--filo-grey)", marginBottom: 4 }}>Email</div>
+                  <div style={{ fontWeight: 500 }}>{selected.email || "—"}</div>
+                </div>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <div style={{ fontSize: 13, color: "var(--filo-grey)", marginBottom: 4 }}>Address</div>
+                  <div style={{ fontWeight: 500 }}>{selected.address}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fade-in">
@@ -3269,7 +3554,7 @@ function ClientsPage() {
                     <td>{c.phone}</td>
                     <td>{c.projects}</td>
                     <td style={{ fontWeight: 600, color: "var(--filo-green)" }}>{fmt(c.total)}</td>
-                    <td><button className="btn btn-ghost btn-sm">View →</button></td>
+                    <td><button className="btn btn-ghost btn-sm" onClick={() => setSelected(c)}>View →</button></td>
                   </tr>
                 ))}
               </tbody>
@@ -3540,8 +3825,11 @@ function SettingsPage() {
               <p style={{ fontSize: 13, color: "var(--filo-grey)", marginBottom: 16 }}>
                 Upload your nursery availability list, price sheet, or product catalog. FILO will parse it and populate your products & services library automatically.
               </p>
-              <p style={{ fontSize: 12, color: "var(--filo-silver)", marginBottom: 16 }}>
+              <p style={{ fontSize: 12, color: "var(--filo-silver)", marginBottom: 12 }}>
                 Supported formats: CSV (best), Excel (.xlsx), PDF, or plain text. CSV files are parsed instantly. Other formats use AI to extract product data. Include column headers like name, size, price for best results.
+              </p>
+              <p style={{ fontSize: 12, marginBottom: 16 }}>
+                <a href="/examples/products-example.csv" download style={{ color: "var(--filo-green)", textDecoration: "underline" }}>Download example CSV template</a>
               </p>
               <input type="file" accept=".csv,.xlsx,.xls,.pdf,.txt,.tsv" id="products-upload"
                 style={{ display: 'none' }}
@@ -3594,8 +3882,11 @@ function SettingsPage() {
               <p style={{ fontSize: 13, color: "var(--filo-grey)", marginBottom: 16 }}>
                 Upload a CSV or Excel file with your client list. FILO will create client records automatically.
               </p>
-              <p style={{ fontSize: 12, color: "var(--filo-silver)", marginBottom: 16 }}>
-                Required columns: Name, Address. Optional: Phone, Email. First row should be headers.
+              <p style={{ fontSize: 12, color: "var(--filo-silver)", marginBottom: 12 }}>
+                Required columns: Name or First/Last Name. Optional: Email, Phone, Address, City, State, Zip, Company, Notes. First row should be headers.
+              </p>
+              <p style={{ fontSize: 12, marginBottom: 16 }}>
+                <a href="/examples/clients-example.csv" download style={{ color: "var(--filo-green)", textDecoration: "underline" }}>Download example CSV template</a>
               </p>
               <input type="file" accept=".csv,.xlsx,.xls" id="clients-upload"
                 style={{ display: 'none' }}
@@ -3636,7 +3927,7 @@ function BillingPage() {
                 <div style={{ opacity: 0.7, marginTop: 4 }}>3 users included • Active since Jan 2026</div>
               </div>
               <div style={{ textAlign: "right" }}>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: 40, fontWeight: 700 }}>$2,500</div>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 40, fontWeight: 700 }}>$500</div>
                 <div style={{ opacity: 0.6 }}>/month</div>
               </div>
             </div>
@@ -3657,7 +3948,7 @@ function BillingPage() {
                   <span className="status-badge" style={{ background: "#D1FAE5", color: "#059669" }}>{status}</span>
                 </div>
               ))}
-              <button className="btn btn-secondary btn-sm" style={{ marginTop: 12 }}>+ Add User ($500/mo)</button>
+              <button className="btn btn-secondary btn-sm" style={{ marginTop: 12 }}>+ Add User ($99/mo)</button>
             </div>
           </div>
           <div className="card">
@@ -4195,7 +4486,11 @@ function OnboardingWizard({ onComplete }) {
       if (step === 3) { fields.city = co.city; fields.state = co.state; fields.usda_zone = co.usda_zone; }
       if (step === 5) { fields.labor_pricing_method = co.labor_pricing_method; fields.material_markup_pct = parseFloat(co.material_markup_pct) || 35; fields.delivery_fee = parseFloat(co.delivery_fee) || 150; }
       if (step === 6) { fields.tax_enabled = co.tax_enabled; fields.tax_rate = parseFloat(co.tax_rate) || 0.0825; fields.default_terms = co.default_terms; fields.warranty_terms = co.warranty_terms; }
-      if (step === 7) { /* CRM Connect — settings saved via CRM UI, nothing extra to persist */ }
+      if (step === 7 && selectedCrm && crmApiKey.trim()) {
+        try {
+          await apiRef.current.crm.connect(selectedCrm, { apiKey: crmApiKey.trim() });
+        } catch (e) { console.log('CRM connect during onboarding:', e.message); }
+      }
       if (Object.keys(fields).length > 0) {
         await apiRef.current.company.update(fields);
       }
@@ -4410,17 +4705,17 @@ function OnboardingWizard({ onComplete }) {
         {step === 7 && (
           <div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-              {CRM_OPTIONS.slice(0, 9).map(crm => (
-                <div key={crm} onClick={() => setSelectedCrm(crm)} style={{
-                  padding: 12, border: `2px solid ${selectedCrm === crm ? 'var(--filo-green)' : 'var(--filo-light)'}`,
-                  background: selectedCrm === crm ? 'var(--filo-green-pale)' : 'white',
-                  borderRadius: "var(--radius-sm)", textAlign: "center", cursor: "pointer", fontSize: 13, fontWeight: selectedCrm === crm ? 600 : 400,
-                }}>{crm}</div>
+              {CRM_OPTIONS.map(crm => (
+                <div key={crm.id} onClick={() => setSelectedCrm(crm.id)} style={{
+                  padding: 12, border: `2px solid ${selectedCrm === crm.id ? 'var(--filo-green)' : 'var(--filo-light)'}`,
+                  background: selectedCrm === crm.id ? 'var(--filo-green-pale)' : 'white',
+                  borderRadius: "var(--radius-sm)", textAlign: "center", cursor: "pointer", fontSize: 13, fontWeight: selectedCrm === crm.id ? 600 : 400,
+                }}>{crm.name}</div>
               ))}
             </div>
             {selectedCrm && (
               <div className="form-group" style={{ marginTop: 16 }}>
-                <label className="form-label">{selectedCrm} API Key</label>
+                <label className="form-label">{CRM_OPTIONS.find(c => c.id === selectedCrm)?.name} API Key</label>
                 <input className="form-input" placeholder="Paste your CRM API key" value={crmApiKey} onChange={e => setCrmApiKey(e.target.value)} />
               </div>
             )}

@@ -106,13 +106,11 @@ async function apiFetch(path, options = {}) {
         body: options.body ? JSON.stringify(options.body) : undefined,
       });
     } else {
-      // Refresh failed — force logout
       clearTokens();
       window.location.href = '/';
       throw new Error('Session expired. Please log in again.');
     }
   } else if (response.status === 401) {
-    // FormData request with expired token — refresh failed or wasn't caught proactively
     clearTokens();
     window.location.href = '/';
     throw new Error('Session expired. Please log in again.');
@@ -329,6 +327,10 @@ export const projects = {
     return apiFetch(`/projects/${projectId}/submittals/generate`, { method: 'POST' });
   },
 
+  async listSubmittals(projectId) {
+    return apiFetch(`/projects/${projectId}/submittals`);
+  },
+
   // Revisions
   async getRevisions(projectId) {
     return apiFetch(`/projects/${projectId}/revisions`);
@@ -350,8 +352,16 @@ export const plants = {
     return apiFetch(`/plants${query ? `?${query}` : ''}`);
   },
 
+  async get(id) {
+    return apiFetch(`/plants/${id}`);
+  },
+
   async create(plant) {
     return apiFetch('/plants', { method: 'POST', body: plant });
+  },
+
+  async update(id, fields) {
+    return apiFetch(`/plants/${id}`, { method: 'PUT', body: fields });
   },
 
   async import(file) {
@@ -362,6 +372,10 @@ export const plants = {
 
   async importList(file) {
     return plants.import(file);
+  },
+
+  async delete(id) {
+    return apiFetch(`/plants/${id}`, { method: 'DELETE' });
   },
 
   async deleteAll() {
@@ -564,7 +578,7 @@ export const submittals = {
   async generatePDF(id, { designRenderUrl } = {}) {
     return apiFetch(`/submittals/${id}/pdf`, {
       method: 'POST',
-      body: JSON.stringify({ designRenderUrl }),
+      body: { designRenderUrl },
     });
   },
 
