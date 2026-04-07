@@ -14,19 +14,6 @@ const useApp = () => useContext(AppContext);
 // ─── Mock Data (dev only) ────────────────────────────────────────
 // These arrays are ONLY populated in local development (import.meta.env.DEV).
 // In production builds (Vercel) they are empty — all data comes from the API.
-const PLANTS_DB = import.meta.env.DEV ? [
-  { id: 1, name: "Loropetalum 'Purple Diamond'", type: "shrub", size: "3-gal", sun: "full", mature_h: "6ft", mature_w: "5ft", bloom: "Pink, Spring", water: "Moderate", price: 28.50, img: "🌸", desc: "Elegant weeping form with burgundy foliage and ribbon-like fuchsia blooms that cascade in spring." },
-  { id: 2, name: "Indian Hawthorn 'Clara'", type: "shrub", size: "3-gal", sun: "full", mature_h: "4ft", mature_w: "4ft", bloom: "White/Pink, Spring", water: "Low", price: 22.00, img: "🌺", desc: "Compact evergreen with glossy leaves and delicate star-shaped flowers, thriving in Houston's warmth." },
-  { id: 3, name: "Gulf Muhly Grass", type: "ornamental_grass", size: "1-gal", sun: "full", mature_h: "4ft", mature_w: "3ft", bloom: "Pink plumes, Fall", water: "Low", price: 12.50, img: "🌾", desc: "A Texas native with ethereal pink cloud-like plumes that catch autumn light like spun cotton candy." },
-  { id: 4, name: "Dwarf Yaupon Holly", type: "shrub", size: "3-gal", sun: "full/partial", mature_h: "5ft", mature_w: "5ft", bloom: "Evergreen", water: "Low", price: 24.00, img: "🌿", desc: "Dense, naturally mounding holly that anchors any design with year-round deep green structure." },
-  { id: 5, name: "Knockout Rose 'Double Red'", type: "shrub", size: "3-gal", sun: "full", mature_h: "4ft", mature_w: "4ft", bloom: "Red, Continuous", water: "Moderate", price: 26.00, img: "🌹", desc: "Relentless bloomer delivering waves of velvety red roses from spring through first frost." },
-  { id: 6, name: "Agapanthus 'Blue Storm'", type: "perennial", size: "1-gal", sun: "full/partial", mature_h: "3ft", mature_w: "2ft", bloom: "Blue, Summer", water: "Low", price: 14.00, img: "💙", desc: "Dramatic globe-shaped clusters of midnight blue trumpet flowers on sturdy stalks." },
-  { id: 7, name: "Asiatic Jasmine", type: "groundcover", size: "1-gal", sun: "partial/shade", mature_h: "1ft", mature_w: "spreading", bloom: "Evergreen groundcover", water: "Low", price: 8.50, img: "🍃", desc: "Dense, cascading groundcover that weaves a living carpet of dark, glossy foliage." },
-  { id: 8, name: "Ligustrum 'Sunshine'", type: "shrub", size: "5-gal", sun: "full", mature_h: "6ft", mature_w: "4ft", bloom: "Yellow foliage, Evergreen", water: "Moderate", price: 38.00, img: "✨", desc: "Electric chartreuse foliage that illuminates shaded borders and adds year-round golden glow." },
-  { id: 9, name: "Star Jasmine", type: "vine", size: "3-gal", sun: "full/partial", mature_h: "20ft", mature_w: "climbing", bloom: "White, Spring", water: "Moderate", price: 24.00, img: "⭐", desc: "Intensely fragrant white pinwheel flowers drift their perfume across warm evening gardens." },
-  { id: 10, name: "Crape Myrtle 'Natchez'", type: "tree", size: "15-gal", sun: "full", mature_h: "25ft", mature_w: "20ft", bloom: "White, Summer", water: "Low", price: 145.00, img: "🌳", desc: "Sculptural cinnamon bark and cascading white summer panicles define this iconic Southern specimen." },
-] : [];
-
 const MOCK_PROJECTS = import.meta.env.DEV ? [
   { id: "PRJ-001", client: "Johnson Residence", address: "4521 River Oaks Blvd", status: "design_review", areas: ["Front Yard", "Side Yard"], date: "2026-03-25", total: 12450 },
   { id: "PRJ-002", client: "Chen Family Estate", address: "1892 Memorial Dr", status: "estimate_approved", areas: ["Front Yard", "Back Yard"], date: "2026-03-22", total: 28900 },
@@ -595,8 +582,8 @@ function TopBar({ page, setMobileOpen }) {
         FILO / <span>{titles[page] || "Projects"}</span>
       </div>
       <div className="topbar-actions">
-        <button className="btn btn-primary btn-sm" onClick={() => {}}>🔔</button>
-        <button className="btn btn-secondary btn-sm">❓ Help</button>
+        <button className="btn btn-primary btn-sm" title="No new notifications">🔔</button>
+        <button className="btn btn-secondary btn-sm" onClick={() => window.open('mailto:support@myfilocrm.com', '_blank')}>❓ Help</button>
       </div>
     </div>
   );
@@ -640,7 +627,7 @@ function DashboardPage({ setPage, openProject }) {
     <div className="fade-in">
       <div className="page-header">
         <div>
-          <h2>Good {new Date().getHours() < 12 ? "morning" : "afternoon"}, {firstName}</h2>
+          <h2>Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 17 ? "afternoon" : "evening"}, {firstName}</h2>
           <p>Here's your project overview</p>
         </div>
         <button className="btn btn-primary" onClick={() => setPage("new-project")}>
@@ -804,7 +791,7 @@ function ProjectDetailPage({ projectId, setPage }) {
     const load = async () => {
       try {
         const mod = await import('./api.js');
-        apiRef.current = mod;
+        apiRef.current = mod.default;
         const data = await mod.projects.get(projectId);
         if (!cancelled) setProject(data);
       } catch (err) {
@@ -817,6 +804,7 @@ function ProjectDetailPage({ projectId, setPage }) {
   }, [projectId]);
 
   const handleSave = async () => {
+    if (!apiRef.current) return;
     setSaving(true);
     try {
       const updated = await apiRef.current.projects.update(projectId, editFields);
@@ -831,6 +819,7 @@ function ProjectDetailPage({ projectId, setPage }) {
   };
 
   const handleStatusChange = async (newStatus) => {
+    if (!apiRef.current) return;
     try {
       await apiRef.current.projects.updateStatus(projectId, newStatus);
       setProject(prev => ({ ...prev, status: newStatus }));
@@ -1055,9 +1044,13 @@ function NewProjectPage() {
   const currentPathRef = useRef([]);
   const [removalPreview, setRemovalPreview] = useState(null);
   const removalPreviewRef = useRef(null); // Ref mirror — always current, never stale in closures
-  // Drawing tool mode — freehand or polygon (shared across all draw tools)
-  const [drawToolMode, setDrawToolMode] = useState('freehand'); // 'freehand' | 'polygon'
-  const [polygonPoints, setPolygonPoints] = useState([]); // current polygon being drawn
+  // Drawing tool mode — separate per tool to prevent bleed between tools
+  const [removalToolMode, setRemovalToolMode] = useState('freehand'); // 'freehand' | 'polygon'
+  const [removalPolygonPoints, setRemovalPolygonPoints] = useState([]);
+  const [bedEdgeToolMode, setBedEdgeToolMode] = useState('freehand');
+  const [bedEdgePolygonPoints, setBedEdgePolygonPoints] = useState([]);
+  const [hardscapeToolMode, setHardscapeToolMode] = useState('freehand');
+  const [hardscapePolygonPoints, setHardscapePolygonPoints] = useState([]);
 
   // Company name for submittal cover
   const [companyName, setCompanyName] = useState('');
@@ -1080,9 +1073,8 @@ function NewProjectPage() {
   const [generatingNightMode, setGeneratingNightMode] = useState(false);
   const [hardscapeDrawing, setHardscapeDrawing] = useState(false);
   const [hardscapePaths, setHardscapePaths] = useState([]);
-  const [hardscapeCurrentPath, setHardscapeCurrentPath] = useState([]);
-  const hardscapeDrawingRef = useRef(false);
-  const hardscapeCurrentPathRef = useRef([]);
+  const hardscapeCanvasRef = useRef(null);
+  const hardscapeDrawRef = useRef({ active: false, points: [] });
   const [hardscapePrompt, setHardscapePrompt] = useState('');
   const [applyingHardscape, setApplyingHardscape] = useState(false);
   const [savedPromptsList, setSavedPromptsList] = useState([]);
@@ -1099,10 +1091,6 @@ function NewProjectPage() {
   const [editingPinIdx, setEditingPinIdx] = useState(null);
   const [placingPin, setPlacingPin] = useState(false);
   const removalCanvasRef = useRef(null);
-  const canvasRef = useRef(null);
-  const photoContainerRef = useRef(null);
-  // Drag-and-drop plant markers
-  const [draggingPlantId, setDraggingPlantId] = useState(null);
   const [removalCost, setRemovalCost] = useState(saved?.removalCost || "350.00");
   const [design, setDesign] = useState(saved?.design || null);
   const [designPlants, setDesignPlants] = useState(saved?.designPlants || []);
@@ -1127,7 +1115,7 @@ function NewProjectPage() {
     if (step === 5 && apiRef.current) {
       apiRef.current.savedPrompts.list().then(res => {
         setSavedPromptsList(res.prompts || []);
-      }).catch(() => {});
+      }).catch((err) => { console.error('Failed to load saved prompts:', err); });
     }
   }, [step]);
 
@@ -1164,27 +1152,70 @@ function NewProjectPage() {
       for (let i = 1; i < bedEdgePath.length; i++) { const p = px(bedEdgePath[i]); ctx.lineTo(p.x, p.y); }
       ctx.stroke();
     }
-    if (polygonPoints.length > 0 && bedEdgePath.length === 0) {
-      if (polygonPoints.length > 1) {
+    if (bedEdgePolygonPoints.length > 0 && bedEdgePath.length === 0) {
+      if (bedEdgePolygonPoints.length > 1) {
         ctx.strokeStyle = '#E97A1F'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
         ctx.beginPath();
-        const p0 = px(polygonPoints[0]); ctx.moveTo(p0.x, p0.y);
-        for (let i = 1; i < polygonPoints.length; i++) { const p = px(polygonPoints[i]); ctx.lineTo(p.x, p.y); }
+        const p0 = px(bedEdgePolygonPoints[0]); ctx.moveTo(p0.x, p0.y);
+        for (let i = 1; i < bedEdgePolygonPoints.length; i++) { const p = px(bedEdgePolygonPoints[i]); ctx.lineTo(p.x, p.y); }
         ctx.stroke(); ctx.setLineDash([]);
       }
-      if (polygonPoints.length > 2) {
+      if (bedEdgePolygonPoints.length > 2) {
         ctx.fillStyle = 'rgba(233,122,31,0.1)'; ctx.beginPath();
-        const p0 = px(polygonPoints[0]); ctx.moveTo(p0.x, p0.y);
-        for (let i = 1; i < polygonPoints.length; i++) { const p = px(polygonPoints[i]); ctx.lineTo(p.x, p.y); }
+        const p0 = px(bedEdgePolygonPoints[0]); ctx.moveTo(p0.x, p0.y);
+        for (let i = 1; i < bedEdgePolygonPoints.length; i++) { const p = px(bedEdgePolygonPoints[i]); ctx.lineTo(p.x, p.y); }
         ctx.closePath(); ctx.fill();
       }
-      polygonPoints.forEach((pt, i) => {
+      bedEdgePolygonPoints.forEach((pt, i) => {
         const p = px(pt); ctx.beginPath(); ctx.arc(p.x, p.y, i === 0 ? 10 : 4, 0, Math.PI * 2);
         ctx.fillStyle = i === 0 ? '#E97A1F' : '#fff'; ctx.fill();
         ctx.strokeStyle = '#E97A1F'; ctx.lineWidth = i === 0 ? 2 : 1.5; ctx.stroke();
       });
     }
-  }, [bedEdgePath, polygonPoints, bedPrepSubStep]);
+  }, [bedEdgePath, bedEdgePolygonPoints, bedPrepSubStep]);
+
+  // ─── Hardscape canvas redraw on state changes ───
+  useEffect(() => {
+    const canvas = hardscapeCanvasRef.current;
+    if (!canvas) return;
+    const container = canvas.parentElement;
+    if (!container) return;
+    if (canvas.width !== container.clientWidth || canvas.height !== container.clientHeight) {
+      canvas.width = container.clientWidth;
+      canvas.height = container.clientHeight;
+    }
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    const px = (pt) => ({ x: pt.x / 100 * w, y: pt.y / 100 * h });
+    // Completed paths — filled blue
+    hardscapePaths.forEach(path => {
+      ctx.fillStyle = 'rgba(59,130,246,0.2)'; ctx.strokeStyle = '#3B82F6'; ctx.lineWidth = 3;
+      ctx.beginPath(); const p0 = px(path[0]); ctx.moveTo(p0.x, p0.y);
+      for (let i = 1; i < path.length; i++) { const p = px(path[i]); ctx.lineTo(p.x, p.y); }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    });
+    // Polygon in progress
+    if (hardscapePolygonPoints.length > 0 && hardscapeToolMode === 'polygon') {
+      if (hardscapePolygonPoints.length > 1) {
+        ctx.strokeStyle = '#3B82F6'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+        ctx.beginPath(); const p0 = px(hardscapePolygonPoints[0]); ctx.moveTo(p0.x, p0.y);
+        for (let i = 1; i < hardscapePolygonPoints.length; i++) { const p = px(hardscapePolygonPoints[i]); ctx.lineTo(p.x, p.y); }
+        ctx.stroke(); ctx.setLineDash([]);
+      }
+      if (hardscapePolygonPoints.length > 2) {
+        ctx.fillStyle = 'rgba(59,130,246,0.1)'; ctx.beginPath();
+        const p0 = px(hardscapePolygonPoints[0]); ctx.moveTo(p0.x, p0.y);
+        for (let i = 1; i < hardscapePolygonPoints.length; i++) { const p = px(hardscapePolygonPoints[i]); ctx.lineTo(p.x, p.y); }
+        ctx.closePath(); ctx.fill();
+      }
+      hardscapePolygonPoints.forEach((pt, i) => {
+        const p = px(pt); ctx.beginPath(); ctx.arc(p.x, p.y, i === 0 ? 10 : 4, 0, Math.PI * 2);
+        ctx.fillStyle = i === 0 ? '#3B82F6' : '#fff'; ctx.fill();
+        ctx.strokeStyle = '#3B82F6'; ctx.lineWidth = i === 0 ? 2 : 1.5; ctx.stroke();
+      });
+    }
+  }, [hardscapePaths, hardscapePolygonPoints, hardscapeToolMode]);
 
   const totalSteps = 8;
   const stepTitles = ["Client Info", "Property Areas", "Photo Upload", "Bed Preparation", "AI Design", "Estimate", "Submittal", "CRM Push"];
@@ -1203,6 +1234,8 @@ function NewProjectPage() {
         case 1: {
           // Create client
           if (!project.clientName || !project.address) throw new Error("Client name and address are required.");
+          if (project.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(project.email)) throw new Error("Please enter a valid email address.");
+          if (project.phone && project.phone.replace(/\D/g, '').length < 7) throw new Error("Please enter a valid phone number.");
           const client = await api.clients.create({
             name: project.clientName,
             address: project.address,
@@ -1276,7 +1309,7 @@ function NewProjectPage() {
             allPlants.forEach(p => { marks[p.id] = p.mark || 'keep'; });
             setPlantMarks(marks);
           } catch (e) {
-            console.log("Plant detection not yet complete:", e.message);
+            // Plant detection not yet complete — will be fetched later
           }
           setError(null);
           setStep(4);
@@ -1304,6 +1337,7 @@ function NewProjectPage() {
             });
             // Generate design if not already done
             let finalPlants = designPlants;
+            let designFailed = false;
             if (!design || designPlants.length === 0) {
               await api.projects.updateStatus(projectId, 'design_generation');
               try {
@@ -1320,11 +1354,13 @@ function NewProjectPage() {
                 }
                 setDesignPlants(finalPlants);
               } catch (e) {
-                console.log("Design generation error:", e.message);
+                setError("Design generation failed: " + e.message + " — please try again.");
+                designFailed = true;
               }
             }
 
-            // Auto-trigger AI visual render — check localStorage for most-processed image
+            // Auto-trigger AI visual render (skip if design generation failed)
+            if (!designFailed) {
             const savedBedEdge = (() => { try { return localStorage.getItem('filo_bed_edge_preview'); } catch(e) { return null; } })();
             const savedRemovalPreview = (() => { try { return localStorage.getItem('filo_removal_preview'); } catch(e) { return null; } })();
             if (finalPlants.length > 0 && !designRenderUrl) {
@@ -1332,7 +1368,6 @@ function NewProjectPage() {
               if (photoUrls.length > 0) {
                 const photoToUse = savedBedEdge || savedRemovalPreview || photoUrls[0];
                 setGeneratingRender(true);
-                console.log('[auto-render] Using:', savedBedEdge ? 'BED EDGE PREVIEW' : savedRemovalPreview ? 'REMOVAL PREVIEW' : 'ORIGINAL PHOTO');
                 try {
                   const result = await api.designRender.generate(
                     photoToUse,
@@ -1343,32 +1378,36 @@ function NewProjectPage() {
                     design?.narrative || design?.design_notes || '',
                     null
                   );
-                  console.log('[auto-render] Success, renderUrl length:', result?.renderUrl?.length || 0);
                   setDesignRenderUrl(result.renderUrl);
                 } catch (err) {
                   console.error('Auto design render failed:', err.message);
-                  setError('Design render failed: ' + err.message + ' — you can retry from the button below.');
                 } finally {
                   setGeneratingRender(false);
                 }
               }
             }
+            } // end !designFailed
           }
-          setStep(6);
+          if (!designFailed) setStep(6);
           break;
         }
         case 6: {
-          // Generate estimate, then stay on step 6 so user can review
+          // Generate estimate if needed, then stay on step 6 to review
           if (projectId && !estimate?.id) {
             try {
               const est = await api.projects.generateEstimate(projectId);
               setEstimate(est.estimate || est);
             } catch (e) {
-              console.log("Estimate generation error:", e.message);
+              setError("Estimate generation failed: " + e.message);
             }
+            // Stay on step 6 — user must approve before advancing
             break;
           }
-          // Already have estimate — advance to submittal
+          // Already have estimate — only advance if approved
+          if (!estimateApproved) {
+            setError("Please approve the estimate before continuing.");
+            break;
+          }
           setStep(7);
           break;
         }
@@ -1389,7 +1428,7 @@ function NewProjectPage() {
               setSubmittal(raw);
             } catch (e) {
               console.log("Submittal generation error:", e.message);
-              alert('Submittal generation failed: ' + e.message);
+              setError('Submittal generation failed: ' + e.message);
               return; // Don't advance to step 8 on failure
             }
           }
@@ -1443,14 +1482,24 @@ function NewProjectPage() {
     }
   };
 
-  // File selection handler
+  // File selection handler with size/type validation
   const handleFileSelect = (areaName, files) => {
     const fileArray = Array.from(files);
-    console.log('[FILO] handleFileSelect called:', areaName, fileArray.length, 'files');
     if (fileArray.length === 0) return;
+    const maxSize = 25 * 1024 * 1024; // 25MB
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/heic', 'image/webp'];
+    const valid = [];
+    const rejected = [];
+    for (const f of fileArray) {
+      if (f.size > maxSize) { rejected.push(`${f.name} exceeds 25MB`); continue; }
+      if (!allowedTypes.includes(f.type) && !f.name.match(/\.(jpg|jpeg|png|heic|webp)$/i)) { rejected.push(`${f.name} is not a supported image type`); continue; }
+      valid.push(f);
+    }
+    if (rejected.length > 0) setError(`Rejected: ${rejected.join(', ')}`);
+    if (valid.length === 0) return;
     setSelectedFiles(prev => ({
       ...prev,
-      [areaName]: [...(prev[areaName] || []), ...fileArray],
+      [areaName]: [...(prev[areaName] || []), ...valid],
     }));
   };
 
@@ -1690,17 +1739,16 @@ function NewProjectPage() {
             if (e.type === 'touchstart') e.preventDefault();
             const pt = getDrawPoint(e);
             if (!pt) return;
-            if (drawToolMode === 'polygon') {
-              // Polygon mode: click to place points, click near first point to close
-              if (polygonPoints.length >= 3) {
-                const first = polygonPoints[0];
+            if (removalToolMode === 'polygon') {
+              if (removalPolygonPoints.length >= 3) {
+                const first = removalPolygonPoints[0];
                 if (Math.sqrt((pt.x - first.x) ** 2 + (pt.y - first.y) ** 2) < 30) {
-                  setDrawPaths(prev => [...prev, { points: [...polygonPoints], type: 'remove' }]);
-                  setPolygonPoints([]);
+                  setDrawPaths(prev => [...prev, { points: [...removalPolygonPoints], type: 'remove' }]);
+                  setRemovalPolygonPoints([]);
                   return;
                 }
               }
-              setPolygonPoints(prev => [...prev, pt]);
+              setRemovalPolygonPoints(prev => [...prev, pt]);
             } else {
               isDrawingRef.current = true;
               setIsDrawing(true);
@@ -1709,7 +1757,7 @@ function NewProjectPage() {
             }
           };
           const moveDraw = (e) => {
-            if (drawToolMode !== 'freehand' || !isDrawingRef.current || !drawModeRef.current) return;
+            if (removalToolMode !== 'freehand' || !isDrawingRef.current || !drawModeRef.current) return;
             if (e.type === 'touchmove') e.preventDefault();
             const pt = getDrawPoint(e);
             if (!pt) return;
@@ -1717,7 +1765,7 @@ function NewProjectPage() {
             setCurrentPath(currentPathRef.current);
           };
           const endDraw = () => {
-            if (drawToolMode !== 'freehand') return;
+            if (removalToolMode !== 'freehand') return;
             const finalPath = currentPathRef.current;
             if (finalPath.length > 3) setDrawPaths(prev => [...prev, { points: finalPath, type: 'remove' }]);
             isDrawingRef.current = false;
@@ -1769,7 +1817,7 @@ function NewProjectPage() {
               try { localStorage.setItem('filo_removal_preview', result.previewUrl); } catch (e) {}
             } catch (err) {
               console.error('Bed prep generation failed:', err.message);
-              alert('Bed prep generation failed: ' + err.message);
+              setError('Bed prep generation failed: ' + err.message);
             } finally { setGeneratingPreview(false); }
           };
 
@@ -1812,7 +1860,7 @@ function NewProjectPage() {
 
             // In-progress freehand path — dashed orange
             const pts = livePoints || bedEdgeDrawRef.current.points;
-            if (pts.length > 1 && drawToolMode === 'freehand') {
+            if (pts.length > 1 && bedEdgeToolMode === 'freehand') {
               ctx.strokeStyle = '#E97A1F';
               ctx.lineWidth = 2;
               ctx.setLineDash([6, 4]);
@@ -1825,28 +1873,28 @@ function NewProjectPage() {
             }
 
             // Polygon mode — lines + fill + point circles
-            if (polygonPoints.length > 0 && drawToolMode === 'polygon' && bedEdgePath.length === 0) {
-              if (polygonPoints.length > 1) {
+            if (bedEdgePolygonPoints.length > 0 && bedEdgeToolMode === 'polygon' && bedEdgePath.length === 0) {
+              if (bedEdgePolygonPoints.length > 1) {
                 ctx.strokeStyle = '#E97A1F';
                 ctx.lineWidth = 2;
                 ctx.setLineDash([6, 4]);
                 ctx.beginPath();
-                const p0 = px(polygonPoints[0]);
+                const p0 = px(bedEdgePolygonPoints[0]);
                 ctx.moveTo(p0.x, p0.y);
-                for (let i = 1; i < polygonPoints.length; i++) { const p = px(polygonPoints[i]); ctx.lineTo(p.x, p.y); }
+                for (let i = 1; i < bedEdgePolygonPoints.length; i++) { const p = px(bedEdgePolygonPoints[i]); ctx.lineTo(p.x, p.y); }
                 ctx.stroke();
                 ctx.setLineDash([]);
               }
-              if (polygonPoints.length > 2) {
+              if (bedEdgePolygonPoints.length > 2) {
                 ctx.fillStyle = 'rgba(233,122,31,0.1)';
                 ctx.beginPath();
-                const p0 = px(polygonPoints[0]);
+                const p0 = px(bedEdgePolygonPoints[0]);
                 ctx.moveTo(p0.x, p0.y);
-                for (let i = 1; i < polygonPoints.length; i++) { const p = px(polygonPoints[i]); ctx.lineTo(p.x, p.y); }
+                for (let i = 1; i < bedEdgePolygonPoints.length; i++) { const p = px(bedEdgePolygonPoints[i]); ctx.lineTo(p.x, p.y); }
                 ctx.closePath();
                 ctx.fill();
               }
-              polygonPoints.forEach((pt, i) => {
+              bedEdgePolygonPoints.forEach((pt, i) => {
                 const p = px(pt);
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, i === 0 ? 10 : 4, 0, Math.PI * 2);
@@ -1860,20 +1908,20 @@ function NewProjectPage() {
           };
 
           const onBedEdgePointerDown = (e) => {
-            if (bedEdgePath.length > 0) return; // already drawn — clear first
+            if (bedEdgePath.length > 0) return;
             e.preventDefault();
             const pt = getBedEdgePoint(e);
             if (!pt) return;
-            if (drawToolMode === 'polygon') {
-              if (polygonPoints.length >= 3) {
-                const first = polygonPoints[0];
+            if (bedEdgeToolMode === 'polygon') {
+              if (bedEdgePolygonPoints.length >= 3) {
+                const first = bedEdgePolygonPoints[0];
                 if (Math.sqrt((pt.x - first.x) ** 2 + (pt.y - first.y) ** 2) < 5) {
-                  setBedEdgePath([...polygonPoints]);
-                  setPolygonPoints([]);
+                  setBedEdgePath([...bedEdgePolygonPoints]);
+                  setBedEdgePolygonPoints([]);
                   return;
                 }
               }
-              setPolygonPoints(prev => [...prev, pt]);
+              setBedEdgePolygonPoints(prev => [...prev, pt]);
             } else {
               bedEdgeDrawRef.current = { active: true, points: [pt] };
               bedEdgeCanvasRef.current?.setPointerCapture(e.pointerId);
@@ -1922,7 +1970,7 @@ function NewProjectPage() {
               const maskDataUrl = getBedEdgeMaskDataUrl();
               const lsRemoval = (() => { try { return localStorage.getItem('filo_removal_preview'); } catch(e) { return null; } })();
               const basePhoto = lsRemoval || removalPreview || photoUrls[0];
-              if (!basePhoto) { alert('No photo available — upload a photo first'); setGeneratingBedEdge(false); return; }
+              if (!basePhoto) { setError('No photo available — upload a photo first'); setGeneratingBedEdge(false); return; }
               const result = await api.bedEdgePreview.generate(basePhoto, maskDataUrl, bedEdgeStyle, 0);
               if (!result?.previewUrl) throw new Error('No preview image returned from server');
               setBedEdgePreview(result.previewUrl);
@@ -1930,7 +1978,7 @@ function NewProjectPage() {
               try { localStorage.setItem('filo_bed_edge_preview', result.previewUrl); } catch (e) {}
             } catch (err) {
               console.error('Bed edge generation failed:', err.message);
-              alert('Bed edge generation failed: ' + err.message);
+              setError('Bed edge generation failed: ' + err.message);
             } finally { setGeneratingBedEdge(false); }
           };
 
@@ -1970,17 +2018,17 @@ function NewProjectPage() {
                         <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
                           <button className={`btn btn-sm ${drawMode === 'remove' ? '' : 'btn-ghost'}`}
                             style={drawMode === 'remove' ? { background: '#DC2626', color: '#fff', border: 'none', fontWeight: 600 } : { fontWeight: 600 }}
-                            onClick={() => { const next = drawMode === 'remove' ? false : 'remove'; drawModeRef.current = next; setDrawMode(next); setPolygonPoints([]); }}>
+                            onClick={() => { const next = drawMode === 'remove' ? false : 'remove'; drawModeRef.current = next; setDrawMode(next); setRemovalPolygonPoints([]); }}>
                             {drawMode === 'remove' ? '🖌 Drawing — Circle plants to remove' : '🖌 Start Drawing'}
                           </button>
                           <div className="pill-group" style={{ marginLeft: 4 }}>
-                            <span className={`pill ${drawToolMode === 'freehand' ? 'active' : ''}`}
-                              onClick={() => { setDrawToolMode('freehand'); setPolygonPoints([]); }} style={{ fontSize: 11, padding: "3px 10px" }}>Freehand</span>
-                            <span className={`pill ${drawToolMode === 'polygon' ? 'active' : ''}`}
-                              onClick={() => { setDrawToolMode('polygon'); setPolygonPoints([]); }} style={{ fontSize: 11, padding: "3px 10px" }}>Polygon</span>
+                            <span className={`pill ${removalToolMode === 'freehand' ? 'active' : ''}`}
+                              onClick={() => { setRemovalToolMode('freehand'); setRemovalPolygonPoints([]); }} style={{ fontSize: 11, padding: "3px 10px" }}>Freehand</span>
+                            <span className={`pill ${removalToolMode === 'polygon' ? 'active' : ''}`}
+                              onClick={() => { setRemovalToolMode('polygon'); setRemovalPolygonPoints([]); }} style={{ fontSize: 11, padding: "3px 10px" }}>Polygon</span>
                           </div>
-                          {polygonPoints.length > 0 && (
-                            <button className="btn btn-sm btn-ghost" onClick={() => setPolygonPoints([])}>Undo Points</button>
+                          {removalPolygonPoints.length > 0 && (
+                            <button className="btn btn-sm btn-ghost" onClick={() => setRemovalPolygonPoints([])}>Undo Points</button>
                           )}
                           {drawPaths.length > 0 && (
                             <>
@@ -2037,15 +2085,15 @@ function NewProjectPage() {
                                     return <polygon key={i} points={pts.map(p => `${p.x},${p.y}`).join(' ')}
                                       fill="rgba(220,38,38,0.3)" stroke="#DC2626" strokeWidth="3" strokeDasharray="8,4" />;
                                   })}
-                                  {currentPath.length > 1 && drawToolMode === 'freehand' && (
+                                  {currentPath.length > 1 && removalToolMode === 'freehand' && (
                                     <polyline points={currentPath.map(p => `${p.x},${p.y}`).join(' ')}
                                       fill="none" stroke="#DC2626" strokeWidth="3" strokeDasharray="6,3" />
                                   )}
-                                  {polygonPoints.length > 0 && drawToolMode === 'polygon' && drawMode === 'remove' && (
+                                  {removalPolygonPoints.length > 0 && removalToolMode === 'polygon' && drawMode === 'remove' && (
                                     <>
-                                      <polyline points={polygonPoints.map(p => `${p.x},${p.y}`).join(' ')}
-                                        fill={polygonPoints.length > 2 ? "rgba(220,38,38,0.15)" : "none"} stroke="#DC2626" strokeWidth="3" strokeDasharray="6,3" />
-                                      {polygonPoints.map((p, i) => (
+                                      <polyline points={removalPolygonPoints.map(p => `${p.x},${p.y}`).join(' ')}
+                                        fill={removalPolygonPoints.length > 2 ? "rgba(220,38,38,0.15)" : "none"} stroke="#DC2626" strokeWidth="3" strokeDasharray="6,3" />
+                                      {removalPolygonPoints.map((p, i) => (
                                         <circle key={i} cx={p.x} cy={p.y} r={i === 0 ? 12 : 6}
                                           fill={i === 0 ? "#DC2626" : "#fff"} stroke="#DC2626" strokeWidth="2" />
                                       ))}
@@ -2056,7 +2104,7 @@ function NewProjectPage() {
                             ))}
                             {drawMode === 'remove' && (
                               <div style={{ textAlign: "center", marginTop: 8, marginBottom: 4, color: "#DC2626", fontSize: 12, fontWeight: 600 }}>
-                                {drawToolMode === 'polygon' ? 'Click to place points — click first point to close' : 'Draw around plants to remove'}
+                                {removalToolMode === 'polygon' ? 'Click to place points — click first point to close' : 'Draw around plants to remove'}
                               </div>
                             )}
                             {!drawMode && drawPaths.length === 0 && (
@@ -2109,10 +2157,10 @@ function NewProjectPage() {
                         <div style={{ marginBottom: 12 }}>
                           <label style={{ fontSize: 11, fontWeight: 600, color: "var(--filo-charcoal)", display: "block", marginBottom: 4 }}>Draw Mode</label>
                           <div className="pill-group">
-                            <span className={`pill ${drawToolMode === 'freehand' ? 'active' : ''}`}
-                              onClick={() => { setDrawToolMode('freehand'); setPolygonPoints([]); }} style={{ fontSize: 12, padding: "4px 12px" }}>Freehand</span>
-                            <span className={`pill ${drawToolMode === 'polygon' ? 'active' : ''}`}
-                              onClick={() => { setDrawToolMode('polygon'); setPolygonPoints([]); }} style={{ fontSize: 12, padding: "4px 12px" }}>Polygon</span>
+                            <span className={`pill ${bedEdgeToolMode === 'freehand' ? 'active' : ''}`}
+                              onClick={() => { setBedEdgeToolMode('freehand'); setBedEdgePolygonPoints([]); }} style={{ fontSize: 12, padding: "4px 12px" }}>Freehand</span>
+                            <span className={`pill ${bedEdgeToolMode === 'polygon' ? 'active' : ''}`}
+                              onClick={() => { setBedEdgeToolMode('polygon'); setBedEdgePolygonPoints([]); }} style={{ fontSize: 12, padding: "4px 12px" }}>Polygon</span>
                           </div>
                         </div>
 
@@ -2128,19 +2176,19 @@ function NewProjectPage() {
                               }}>Clear & Redraw</button>
                             </>
                           )}
-                          {bedEdgePath.length === 0 && polygonPoints.length === 0 && (
+                          {bedEdgePath.length === 0 && bedEdgePolygonPoints.length === 0 && (
                             <span style={{ fontSize: 12, color: "var(--filo-grey)" }}>
-                              {drawToolMode === 'polygon' ? 'Click to place points — click near first point to close' : 'Draw the bed perimeter below'}
+                              {bedEdgeToolMode === 'polygon' ? 'Click to place points — click near first point to close' : 'Draw the bed perimeter below'}
                             </span>
                           )}
-                          {polygonPoints.length >= 3 && bedEdgePath.length === 0 && drawToolMode === 'polygon' && (
+                          {bedEdgePolygonPoints.length >= 3 && bedEdgePath.length === 0 && bedEdgeToolMode === 'polygon' && (
                             <>
-                              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--filo-green)" }}>{polygonPoints.length} points placed</span>
-                              <button className="btn btn-sm" onClick={() => { setBedEdgePath([...polygonPoints]); setPolygonPoints([]); }}
+                              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--filo-green)" }}>{bedEdgePolygonPoints.length} points placed</span>
+                              <button className="btn btn-sm" onClick={() => { setBedEdgePath([...bedEdgePolygonPoints]); setBedEdgePolygonPoints([]); }}
                                 style={{ background: 'var(--filo-green)', color: '#fff', border: 'none', fontWeight: 600, padding: '6px 16px' }}>
                                 Close Polygon
                               </button>
-                              <button className="btn btn-sm btn-ghost" onClick={() => { setPolygonPoints([]); setTimeout(() => redrawBedEdgeCanvas(), 0); }}>Clear</button>
+                              <button className="btn btn-sm btn-ghost" onClick={() => { setBedEdgePolygonPoints([]); setTimeout(() => redrawBedEdgeCanvas(), 0); }}>Clear</button>
                             </>
                           )}
                           <div style={{ flex: 1 }} />
@@ -2425,7 +2473,8 @@ function NewProjectPage() {
                               setSavedPromptsList(prev => [saved, ...prev]);
                               setShowSavePromptForm(false);
                               setNewPromptName('');
-                            } catch (err) { alert('Failed to save prompt: ' + err.message); }
+                              setProject(p => ({ ...p, specialRequests: '' }));
+                            } catch (err) { setError('Failed to save prompt: ' + err.message); }
                           }}>Save</button>
                         <button className="btn btn-sm btn-ghost" style={{ fontSize: 11 }}
                           onClick={() => setShowSavePromptForm(false)}>Cancel</button>
@@ -2485,7 +2534,6 @@ function NewProjectPage() {
                               const lsBedEdge = (() => { try { return localStorage.getItem('filo_bed_edge_preview'); } catch(e) { return null; } })();
                               const lsRemoval = (() => { try { return localStorage.getItem('filo_removal_preview'); } catch(e) { return null; } })();
                               const photoToUse = lsBedEdge || lsRemoval || photoUrls[0];
-                              console.log('[step5-btn-render] Using:', lsBedEdge ? 'BED EDGE PREVIEW' : lsRemoval ? 'REMOVAL PREVIEW' : 'ORIGINAL PHOTO');
                               setGeneratingRender(true);
                               api.designRender.generate(
                                 photoToUse, finalPlants,
@@ -2504,7 +2552,7 @@ function NewProjectPage() {
                           }
                         }
                       } catch (e) {
-                        alert('Design generation failed: ' + e.message);
+                        setError('Design generation failed: ' + e.message);
                       } finally { setLoading(false); }
                     }}>
                     {loading ? '⟳ Generating AI Design...' : '✨ Generate AI Design'}
@@ -2561,7 +2609,6 @@ function NewProjectPage() {
                 const lsBedEdge = (() => { try { return localStorage.getItem('filo_bed_edge_preview'); } catch(e) { return null; } })();
                 const lsRemoval = (() => { try { return localStorage.getItem('filo_removal_preview'); } catch(e) { return null; } })();
                 const photoToSend = lsBedEdge || lsRemoval || bedEdgePreviewRef.current || removalPreviewRef.current || photoUrls[0];
-                console.log('[generateFinalDesign] Using:', lsBedEdge ? 'BED EDGE' : lsRemoval ? 'REMOVAL' : 'ORIGINAL PHOTO');
                 try {
                   const maskDataUrl = getMaskFromDrawPaths();
                   const result = await api.designRender.generate(
@@ -2577,7 +2624,7 @@ function NewProjectPage() {
                   setDesignRenderUrl(result.renderUrl);
                 } catch (err) {
                   console.error('Design render failed:', err.message);
-                  alert('Design render failed: ' + err.message);
+                  setError('Design render failed: ' + err.message + ' — use the Regenerate button above to retry.');
                 } finally { setGeneratingRender(false); }
               };
 
@@ -2686,7 +2733,7 @@ function NewProjectPage() {
                               setRevisionPrompt('');
                             } catch (err) {
                               console.error('Revision failed:', err.message);
-                              alert('Revision failed: ' + err.message);
+                              setError('Revision failed: ' + err.message);
                             } finally { setApplyingRevision(false); }
                           }}>
                           {applyingRevision ? '⟳' : '→'}
@@ -2774,7 +2821,7 @@ function NewProjectPage() {
                                 setAdjustPrompt('');
                               } catch (err) {
                                 console.error('Design adjustment failed:', err.message);
-                                alert('Adjustment failed: ' + err.message);
+                                setError('Adjustment failed: ' + err.message);
                               } finally { setAdjusting(false); }
                             }}
                             style={{ width: "100%", fontWeight: 700, padding: "12px 24px" }}>
@@ -2799,7 +2846,7 @@ function NewProjectPage() {
                           setNightModeUrl(result.renderUrl);
                         } catch (err) {
                           console.error('Night mode failed:', err.message);
-                          alert('Night mode generation failed: ' + err.message);
+                          setError('Night mode generation failed: ' + err.message);
                         } finally { setGeneratingNightMode(false); }
                       }} disabled={generatingNightMode}
                         style={{ background: '#1e293b', color: '#fbbf24', border: 'none', fontWeight: 600, padding: '8px 20px' }}>
@@ -2842,129 +2889,87 @@ function NewProjectPage() {
                         Draw on the design to outline where you want hardscape changes, then describe the material.
                       </p>
                       <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-                        <button className="btn btn-sm" onClick={() => { setHardscapeDrawing(!hardscapeDrawing); setPolygonPoints([]); }}
+                        <button className="btn btn-sm" onClick={() => { setHardscapeDrawing(!hardscapeDrawing); setHardscapePolygonPoints([]); }}
                           style={{ background: hardscapeDrawing ? '#E97316' : 'var(--filo-green)', color: '#fff', border: 'none', fontWeight: 600 }}>
                           {hardscapeDrawing ? '✓ Drawing Mode ON' : '✏️ Start Drawing'}
                         </button>
                         <div className="pill-group" style={{ marginLeft: 4 }}>
-                          <span className={`pill ${drawToolMode === 'freehand' ? 'active' : ''}`}
-                            onClick={() => { setDrawToolMode('freehand'); setPolygonPoints([]); }} style={{ fontSize: 11, padding: "3px 10px" }}>Freehand</span>
-                          <span className={`pill ${drawToolMode === 'polygon' ? 'active' : ''}`}
-                            onClick={() => { setDrawToolMode('polygon'); setPolygonPoints([]); }} style={{ fontSize: 11, padding: "3px 10px" }}>Polygon</span>
+                          <span className={`pill ${hardscapeToolMode === 'freehand' ? 'active' : ''}`}
+                            onClick={() => { setHardscapeToolMode('freehand'); setHardscapePolygonPoints([]); }} style={{ fontSize: 11, padding: "3px 10px" }}>Freehand</span>
+                          <span className={`pill ${hardscapeToolMode === 'polygon' ? 'active' : ''}`}
+                            onClick={() => { setHardscapeToolMode('polygon'); setHardscapePolygonPoints([]); }} style={{ fontSize: 11, padding: "3px 10px" }}>Polygon</span>
                         </div>
                         {hardscapePaths.length > 0 && (
                           <button className="btn btn-sm btn-ghost" onClick={() => setHardscapePaths([])}>Clear Drawing</button>
                         )}
-                        {polygonPoints.length > 0 && (
-                          <button className="btn btn-sm btn-ghost" onClick={() => setPolygonPoints([])}>Undo Points</button>
+                        {hardscapePolygonPoints.length > 0 && (
+                          <button className="btn btn-sm btn-ghost" onClick={() => setHardscapePolygonPoints([])}>Undo Points</button>
                         )}
                       </div>
                       <div style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden", border: hardscapeDrawing ? '2px solid #3B82F6' : '2px solid transparent', cursor: hardscapeDrawing ? 'crosshair' : 'default' }}>
-                        <img src={designRenderUrl} alt="Design" style={{ width: "100%", display: "block", pointerEvents: "none" }} draggable={false} />
-                        <svg
-                          style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", zIndex: 5 }}
-                          viewBox="0 0 1000 1000" preserveAspectRatio="none"
-                          onMouseDown={(e) => {
+                        <img src={designRenderUrl} alt="Design" style={{ width: "100%", display: "block", pointerEvents: "none" }} draggable={false}
+                          onLoad={() => {
+                            const canvas = hardscapeCanvasRef.current;
+                            if (canvas) { const c = canvas.parentElement; canvas.width = c.clientWidth; canvas.height = c.clientHeight; }
+                          }} />
+                        <canvas
+                          ref={hardscapeCanvasRef}
+                          style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", zIndex: 5, touchAction: "none" }}
+                          onPointerDown={(e) => {
                             if (!hardscapeDrawing) return;
-                            const svg = e.currentTarget; const rect = svg.getBoundingClientRect();
-                            const pt = { x: (e.clientX - rect.left) / rect.width * 1000, y: (e.clientY - rect.top) / rect.height * 1000 };
-                            if (drawToolMode === 'polygon') {
-                              if (polygonPoints.length >= 3) {
-                                const first = polygonPoints[0];
-                                if (Math.sqrt((pt.x - first.x) ** 2 + (pt.y - first.y) ** 2) < 30) {
-                                  setHardscapePaths(prev => [...prev, [...polygonPoints]]);
-                                  setPolygonPoints([]);
+                            e.preventDefault();
+                            const canvas = hardscapeCanvasRef.current; if (!canvas) return;
+                            const rect = canvas.getBoundingClientRect();
+                            const pt = { x: (e.clientX - rect.left) / rect.width * 100, y: (e.clientY - rect.top) / rect.height * 100 };
+                            if (hardscapeToolMode === 'polygon') {
+                              if (hardscapePolygonPoints.length >= 3) {
+                                const first = hardscapePolygonPoints[0];
+                                if (Math.sqrt((pt.x - first.x) ** 2 + (pt.y - first.y) ** 2) < 5) {
+                                  setHardscapePaths(prev => [...prev, [...hardscapePolygonPoints]]);
+                                  setHardscapePolygonPoints([]);
                                   return;
                                 }
                               }
-                              setPolygonPoints(prev => [...prev, pt]);
+                              setHardscapePolygonPoints(prev => [...prev, pt]);
                             } else {
-                              hardscapeDrawingRef.current = true;
-                              hardscapeCurrentPathRef.current = [pt];
-                              setHardscapeCurrentPath([pt]);
+                              hardscapeDrawRef.current = { active: true, points: [pt] };
+                              canvas.setPointerCapture(e.pointerId);
                             }
                           }}
-                          onMouseMove={(e) => {
-                            if (drawToolMode !== 'freehand' || !hardscapeDrawingRef.current) return;
-                            const svg = e.currentTarget; const rect = svg.getBoundingClientRect();
-                            const pt = { x: (e.clientX - rect.left) / rect.width * 1000, y: (e.clientY - rect.top) / rect.height * 1000 };
-                            hardscapeCurrentPathRef.current = [...hardscapeCurrentPathRef.current, pt];
-                            setHardscapeCurrentPath(hardscapeCurrentPathRef.current);
-                          }}
-                          onMouseUp={() => {
-                            if (drawToolMode !== 'freehand') return;
-                            const finalPath = hardscapeCurrentPathRef.current;
-                            if (finalPath.length > 3) setHardscapePaths(prev => [...prev, finalPath]);
-                            hardscapeDrawingRef.current = false;
-                            hardscapeCurrentPathRef.current = [];
-                            setHardscapeCurrentPath([]);
-                          }}
-                          onMouseLeave={() => {
-                            if (drawToolMode !== 'freehand' || !hardscapeDrawingRef.current) return;
-                            const finalPath = hardscapeCurrentPathRef.current;
-                            if (finalPath.length > 3) setHardscapePaths(prev => [...prev, finalPath]);
-                            hardscapeDrawingRef.current = false;
-                            hardscapeCurrentPathRef.current = [];
-                            setHardscapeCurrentPath([]);
-                          }}
-                          onTouchStart={(e) => {
-                            if (!hardscapeDrawing) return;
+                          onPointerMove={(e) => {
+                            if (!hardscapeDrawRef.current.active) return;
                             e.preventDefault();
-                            const svg = e.currentTarget; const rect = svg.getBoundingClientRect();
-                            const pt = { x: (e.touches[0].clientX - rect.left) / rect.width * 1000, y: (e.touches[0].clientY - rect.top) / rect.height * 1000 };
-                            if (drawToolMode === 'polygon') {
-                              if (polygonPoints.length >= 3) {
-                                const first = polygonPoints[0];
-                                if (Math.sqrt((pt.x - first.x) ** 2 + (pt.y - first.y) ** 2) < 30) {
-                                  setHardscapePaths(prev => [...prev, [...polygonPoints]]);
-                                  setPolygonPoints([]);
-                                  return;
-                                }
-                              }
-                              setPolygonPoints(prev => [...prev, pt]);
-                            } else {
-                              hardscapeDrawingRef.current = true;
-                              hardscapeCurrentPathRef.current = [pt];
-                              setHardscapeCurrentPath([pt]);
+                            const canvas = hardscapeCanvasRef.current; if (!canvas) return;
+                            const rect = canvas.getBoundingClientRect();
+                            const pt = { x: (e.clientX - rect.left) / rect.width * 100, y: (e.clientY - rect.top) / rect.height * 100 };
+                            hardscapeDrawRef.current.points.push(pt);
+                            // Redraw canvas with live points
+                            const w = canvas.width, h = canvas.height;
+                            const ctx = canvas.getContext('2d');
+                            ctx.clearRect(0, 0, w, h);
+                            const px = (p) => ({ x: p.x / 100 * w, y: p.y / 100 * h });
+                            hardscapePaths.forEach(path => {
+                              ctx.fillStyle = 'rgba(59,130,246,0.2)'; ctx.strokeStyle = '#3B82F6'; ctx.lineWidth = 3;
+                              ctx.beginPath(); const p0 = px(path[0]); ctx.moveTo(p0.x, p0.y);
+                              for (let i = 1; i < path.length; i++) { const p = px(path[i]); ctx.lineTo(p.x, p.y); }
+                              ctx.closePath(); ctx.fill(); ctx.stroke();
+                            });
+                            const pts = hardscapeDrawRef.current.points;
+                            if (pts.length > 1) {
+                              ctx.strokeStyle = '#3B82F6'; ctx.lineWidth = 3; ctx.setLineDash([6, 4]);
+                              ctx.beginPath(); const p0 = px(pts[0]); ctx.moveTo(p0.x, p0.y);
+                              for (let i = 1; i < pts.length; i++) { const p = px(pts[i]); ctx.lineTo(p.x, p.y); }
+                              ctx.stroke(); ctx.setLineDash([]);
                             }
                           }}
-                          onTouchMove={(e) => {
-                            if (drawToolMode !== 'freehand' || !hardscapeDrawingRef.current) return;
-                            e.preventDefault();
-                            const svg = e.currentTarget; const rect = svg.getBoundingClientRect();
-                            const pt = { x: (e.touches[0].clientX - rect.left) / rect.width * 1000, y: (e.touches[0].clientY - rect.top) / rect.height * 1000 };
-                            hardscapeCurrentPathRef.current = [...hardscapeCurrentPathRef.current, pt];
-                            setHardscapeCurrentPath(hardscapeCurrentPathRef.current);
+                          onPointerUp={() => {
+                            if (!hardscapeDrawRef.current.active) return;
+                            const pts = hardscapeDrawRef.current.points;
+                            hardscapeDrawRef.current = { active: false, points: [] };
+                            if (pts.length > 3) setHardscapePaths(prev => [...prev, pts]);
                           }}
-                          onTouchEnd={() => {
-                            if (drawToolMode !== 'freehand') return;
-                            const finalPath = hardscapeCurrentPathRef.current;
-                            if (finalPath.length > 3) setHardscapePaths(prev => [...prev, finalPath]);
-                            hardscapeDrawingRef.current = false;
-                            hardscapeCurrentPathRef.current = [];
-                            setHardscapeCurrentPath([]);
-                          }}
-                        >
-                          {hardscapePaths.map((path, i) => (
-                            <polygon key={i} points={path.map(p => `${p.x},${p.y}`).join(' ')}
-                              fill="rgba(59,130,246,0.2)" stroke="#3B82F6" strokeWidth="3" />
-                          ))}
-                          {hardscapeCurrentPath.length > 1 && drawToolMode === 'freehand' && (
-                            <polyline points={hardscapeCurrentPath.map(p => `${p.x},${p.y}`).join(' ')}
-                              fill="none" stroke="#3B82F6" strokeWidth="3" />
-                          )}
-                          {polygonPoints.length > 0 && drawToolMode === 'polygon' && (
-                            <>
-                              <polyline points={polygonPoints.map(p => `${p.x},${p.y}`).join(' ')}
-                                fill={polygonPoints.length > 2 ? "rgba(59,130,246,0.1)" : "none"} stroke="#3B82F6" strokeWidth="3" />
-                              {polygonPoints.map((p, i) => (
-                                <circle key={i} cx={p.x} cy={p.y} r={i === 0 ? 12 : 6}
-                                  fill={i === 0 ? "#3B82F6" : "#fff"} stroke="#3B82F6" strokeWidth="2" />
-                              ))}
-                            </>
-                          )}
-                        </svg>
-                        {hardscapeDrawing && hardscapePaths.length === 0 && polygonPoints.length === 0 && (
+                        />
+                        {hardscapeDrawing && hardscapePaths.length === 0 && hardscapePolygonPoints.length === 0 && (
                           <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", background: "#3B82F6", color: "#fff", padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, zIndex: 25, pointerEvents: "none" }}>
                             Draw around the hardscape area
                           </div>
@@ -2989,8 +2994,8 @@ function NewProjectPage() {
                                 ctx.fillStyle = '#000000';
                                 for (const path of hardscapePaths) {
                                   ctx.beginPath();
-                                  ctx.moveTo(path[0].x * 1.024, path[0].y * 1.024);
-                                  for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x * 1.024, path[i].y * 1.024);
+                                  ctx.moveTo(path[0].x / 100 * 1024, path[0].y / 100 * 1024);
+                                  for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x / 100 * 1024, path[i].y / 100 * 1024);
                                   ctx.closePath();
                                   ctx.fill();
                                 }
@@ -3006,8 +3011,7 @@ function NewProjectPage() {
                                   throw new Error('No render returned');
                                 }
                               } catch (err) {
-                                console.error('Hardscape failed:', err.message);
-                                alert('Hardscape edit failed: ' + err.message);
+                                setError('Hardscape edit failed: ' + err.message);
                               } finally { setApplyingHardscape(false); }
                             }}>
                             {applyingHardscape ? '⟳ Applying Hardscape...' : '✨ Apply Hardscape'}
@@ -3293,7 +3297,7 @@ function NewProjectPage() {
                             window.open(result.pdfUrl, '_blank');
                           }
                         } catch (err) {
-                          alert('PDF generation failed: ' + err.message);
+                          setError('PDF generation failed: ' + err.message);
                         } finally { setGeneratingPdf(false); }
                       }}>
                       {generatingPdf ? '⟳ Generating PDF...' : '📄 Generate & Download PDF'}
@@ -3324,8 +3328,8 @@ function NewProjectPage() {
                 {submittal?.narrative && (
                   <div style={{ marginBottom: 24 }}>
                     <h4 style={{ fontFamily: "var(--font-display)", color: "#1a3a2a", marginBottom: 8 }}>Design Narrative</h4>
-                    <p style={{ fontSize: 13, lineHeight: 1.8, color: "var(--filo-slate)" }}>
-                      {submittal.narrative.length > 400 ? submittal.narrative.substring(0, 400) + '...' : submittal.narrative}
+                    <p style={{ fontSize: 13, lineHeight: 1.8, color: "var(--filo-slate)", whiteSpace: "pre-line" }}>
+                      {submittal.narrative}
                     </p>
                   </div>
                 )}
@@ -3429,6 +3433,7 @@ function PlantLibraryPage() {
   const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState(null);
   const [editFields, setEditFields] = useState({});
+  const [pageError, setPageError] = useState(null);
 
   const loadProducts = useCallback(async () => {
     try {
@@ -3482,7 +3487,7 @@ function PlantLibraryPage() {
       await plantsApi.update(id, fields);
       setEditing(null);
       loadProducts();
-    } catch (err) { alert('Save failed: ' + err.message); }
+    } catch (err) { setPageError('Save failed: ' + err.message); }
   };
 
   const toggleSelect = (id) => {
@@ -3518,7 +3523,7 @@ function PlantLibraryPage() {
       for (const id of ids) { await plantsApi.delete(id); }
       setTrash(prev => prev.filter(p => !ids.includes(p.id)));
     } catch (err) {
-      alert('Failed to delete: ' + err.message);
+      setPageError('Failed to delete: ' + err.message);
     } finally { setDeleting(false); }
   };
 
@@ -3587,11 +3592,17 @@ function PlantLibraryPage() {
             const name = prompt('Product/plant name:');
             if (!name?.trim()) return;
             plantsApi.create({ common_name: name.trim() }).then(() => loadProducts())
-              .catch(err => alert('Failed: ' + err.message));
+              .catch(err => setPageError('Failed: ' + err.message));
           }}>+ Add Product</button>}
         </div>
       </div>
       <div className="page-body">
+        {pageError && (
+          <div style={{ padding: 12, background: '#FEE2E2', borderRadius: 8, marginBottom: 16, color: '#991B1B', fontSize: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>{pageError}</span>
+            <button onClick={() => setPageError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16 }}>&#10005;</button>
+          </div>
+        )}
         <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap", alignItems: "center" }}>
           <input className="form-input" style={{ maxWidth: 300 }} placeholder="Search products & services..."
             value={search} onChange={e => setSearch(e.target.value)} />
@@ -3681,7 +3692,7 @@ function PlantLibraryPage() {
 }
 
 // ─── Estimates Page ──────────────────────────────────────────────
-function EstimatesPage() {
+function EstimatesPage({ setPage, openProject }) {
   const [estimates, setEstimates] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -3739,7 +3750,7 @@ function EstimatesPage() {
         <div className="card">
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Project</th><th>Client</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+              <thead><tr><th>Project</th><th>Client</th><th>Amount</th><th>Status</th><th>Date</th><th></th></tr></thead>
               <tbody>
                 {estimates.length > 0 ? estimates.map(e => {
                   const status = STATUS_MAP[e.status] || { label: e.status, color: "#6B7280" };
@@ -3754,10 +3765,11 @@ function EstimatesPage() {
                       </span>
                     </td>
                     <td>{e.date}</td>
+                    <td><button className="btn btn-ghost btn-sm" onClick={() => openProject && openProject(e.project_id)}>View →</button></td>
                   </tr>
                   );
                 }) : (
-                  <tr><td colSpan={5} style={{ textAlign: "center", padding: 40, color: "var(--filo-grey)" }}>No estimates yet. Create a project to get started.</td></tr>
+                  <tr><td colSpan={6} style={{ textAlign: "center", padding: 40, color: "var(--filo-grey)" }}>No estimates yet. Create a project to get started.</td></tr>
                 )}
               </tbody>
             </table>
@@ -3773,30 +3785,34 @@ function EstimatesPage() {
 function SubmittalsPage() {
   const [submittals, setSubmittals] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [pageError, setPageError] = useState(null);
   const apiRef = useRef(null);
 
   useEffect(() => {
+    let cancelled = false;
     const load = async () => {
       try {
         const mod = await import('./api.js');
         apiRef.current = mod.default;
-        // Fetch all projects, then load submittals for each
         const projects = await mod.default.projects.list();
         const projectList = Array.isArray(projects) ? projects : projects.projects || [];
-        const allSubmittals = [];
-        for (const proj of projectList) {
-          try {
-            const subs = await mod.default.projects.listSubmittals(proj.id);
-            const subList = Array.isArray(subs) ? subs : [];
-            subList.forEach(s => allSubmittals.push({ ...s, clientName: proj.client_name || proj.clientName, address: proj.address }));
-          } catch { /* project may have no submittals */ }
-        }
-        setSubmittals(allSubmittals);
+        const results = await Promise.all(
+          projectList.map(proj =>
+            mod.default.projects.listSubmittals(proj.id)
+              .then(subs => {
+                const subList = Array.isArray(subs) ? subs : [];
+                return subList.map(s => ({ ...s, clientName: proj.client_name || proj.clientName, address: proj.address }));
+              })
+              .catch(() => [])
+          )
+        );
+        if (!cancelled) setSubmittals(results.flat());
       } catch (err) {
         console.error('Failed to load submittals:', err.message);
-      } finally { setLoading(false); }
+      } finally { if (!cancelled) setLoading(false); }
     };
     load();
+    return () => { cancelled = true; };
   }, []);
 
   const handleDownload = async (sub) => {
@@ -3809,7 +3825,7 @@ function SubmittalsPage() {
           window.open(result.pdfUrl, '_blank');
           setSubmittals(prev => prev.map(s => s.id === sub.id ? { ...s, pdf_url: result.pdfUrl } : s));
         }
-      } catch (err) { alert('PDF generation failed: ' + err.message); }
+      } catch (err) { setPageError('PDF generation failed: ' + err.message); }
     }
   };
 
@@ -3819,6 +3835,12 @@ function SubmittalsPage() {
         <div><h2>Submittals</h2><p>Professional design proposal documents</p></div>
       </div>
       <div className="page-body">
+        {pageError && (
+          <div style={{ padding: 12, background: '#FEE2E2', borderRadius: 8, marginBottom: 16, color: '#991B1B', fontSize: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>{pageError}</span>
+            <button onClick={() => setPageError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16 }}>&#10005;</button>
+          </div>
+        )}
         {loading ? (
           <div style={{ textAlign: "center", padding: 48, color: "var(--filo-grey)" }}>Loading submittals...</div>
         ) : submittals.length === 0 ? (
@@ -3865,17 +3887,19 @@ function CRMPage() {
   const apiRef = useRef(null);
 
   useEffect(() => {
+    let cancelled = false;
     const load = async () => {
       try {
         const mod = await import('./api.js');
         apiRef.current = mod.default;
         const result = await mod.crm.status();
-        setStatus(result);
+        if (!cancelled) setStatus(result);
       } catch (err) {
-        console.error('CRM status load error:', err.message);
-      } finally { setLoading(false); }
+        if (!cancelled) console.error('CRM status load error:', err.message);
+      } finally { if (!cancelled) setLoading(false); }
     };
     load();
+    return () => { cancelled = true; };
   }, []);
 
   const handleConnect = async (provider) => {
@@ -3892,14 +3916,17 @@ function CRMPage() {
     } finally { setConnecting(false); }
   };
 
+  const [disconnecting, setDisconnecting] = useState(false);
   const handleDisconnect = async () => {
     if (!apiRef.current) return;
+    if (!confirm('Disconnect your CRM integration? This cannot be undone.')) return;
+    setDisconnecting(true);
     try {
       await apiRef.current.crm.disconnect();
       setStatus({ connected: false, integration: null });
     } catch (err) {
       setError(err.message);
-    }
+    } finally { setDisconnecting(false); }
   };
 
   const connectedProvider = status?.integration?.provider;
@@ -3927,7 +3954,7 @@ function CRMPage() {
                       Connected{lastSync ? ` • Last sync ${new Date(lastSync).toLocaleString()}` : ''}
                     </div>
                   </div>
-                  <button className="btn btn-secondary btn-sm" style={{ marginLeft: "auto" }} onClick={handleDisconnect}>Disconnect</button>
+                  <button className="btn btn-secondary btn-sm" style={{ marginLeft: "auto" }} onClick={handleDisconnect} disabled={disconnecting}>{disconnecting ? 'Disconnecting...' : 'Disconnect'}</button>
                 </div>
                 <div style={{ fontSize: 13, color: "var(--filo-grey)", padding: 12, background: "var(--filo-offwhite)", borderRadius: "var(--radius-sm)" }}>
                   One-way sync: FILO → CRM. Project data, estimates, and submittals are pushed to your CRM. FILO never modifies existing CRM data.
@@ -4146,10 +4173,19 @@ function SettingsPage() {
   const apiRef = useRef(null);
 
   useEffect(() => {
-    import('./api.js').then(mod => {
-      apiRef.current = mod.default;
-      mod.default.company.get().then(data => setSettings(data)).catch(console.error);
-    });
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const mod = await import('./api.js');
+        apiRef.current = mod.default;
+        const data = await mod.default.company.get();
+        if (!cancelled) setSettings(data);
+      } catch (err) {
+        if (!cancelled) console.error(err.message);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
   }, []);
 
   const update = (key, val) => setSettings(prev => ({ ...prev, [key]: val }));
@@ -4486,37 +4522,79 @@ function SettingsPage() {
 // ─── Billing Page ────────────────────────────────────────────────
 function BillingPage() {
   const [billing, setBilling] = useState(null);
+  const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
   const [msg, setMsg] = useState(null);
-  const apiRef = useRef(null);
+  const billingApi = useRef(null);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const mod = await import('./api.js');
-        apiRef.current = mod.default;
-        const result = await mod.billing.status();
-        setBilling(result);
-      } catch (err) {
-        console.error('Failed to load billing:', err.message);
-      } finally { setLoading(false); }
-    };
-    load();
-  }, []);
-
-  const handlePortal = async () => {
-    if (!apiRef.current) return;
+  const loadBilling = async (cancelled) => {
     try {
-      const result = await apiRef.current.billing.portal(window.location.href);
-      if (result.url) window.location.href = result.url;
-    } catch (err) { setMsg(`Error: ${err.message}`); }
+      const mod = await import('./api.js');
+      billingApi.current = mod.billing;
+      const [result, inv] = await Promise.all([mod.billing.status(), mod.billing.invoices()]);
+      if (cancelled && cancelled()) return;
+      setBilling(result);
+      setInvoices(Array.isArray(inv) ? inv : inv?.invoices || []);
+    } catch (err) {
+      if (cancelled && cancelled()) return;
+      console.error('Failed to load billing:', err.message);
+    } finally { if (!cancelled || !cancelled()) setLoading(false); }
   };
 
+  useEffect(() => {
+    let cancelled = false;
+    loadBilling(() => cancelled);
+    return () => { cancelled = true; };
+  }, []);
+
+  const doAction = async (fn, successMsg) => {
+    setActionLoading(true); setMsg(null);
+    try { await fn(); setMsg(successMsg); await loadBilling(); }
+    catch (err) { setMsg(`Error: ${err.message}`); }
+    finally { setActionLoading(false); }
+  };
+
+  const handleCheckout = async () => {
+    setActionLoading(true); setMsg(null);
+    try {
+      const result = await billingApi.current.checkout(
+        `${window.location.origin}?billing=success`,
+        `${window.location.origin}?billing=cancel`
+      );
+      if (result.url) window.location.href = result.url;
+    } catch (err) { setMsg(`Error: ${err.message}`); }
+    finally { setActionLoading(false); }
+  };
+
+  const handlePortal = async () => {
+    setActionLoading(true); setMsg(null);
+    try {
+      const result = await billingApi.current.portal(window.location.href);
+      if (result.url) window.location.href = result.url;
+    } catch (err) { setMsg(`Error: ${err.message}`); }
+    finally { setActionLoading(false); }
+  };
+
+  const status = billing?.status || 'none';
   const sub = billing?.subscription;
-  const plan = sub?.plan || 'Free';
-  const statusLabel = sub?.status === 'active' ? 'Active' : sub?.status === 'trialing' ? 'Trial' : sub?.status || 'No subscription';
-  const amount = sub?.amount ? `$${(sub.amount / 100).toLocaleString()}` : '$0';
-  const userCount = billing?.userCount || billing?.users || 1;
+  const isActive = ['active', 'trialing'].includes(status);
+  const monthlyTotal = billing?.monthlyTotal || (sub ? parseFloat(sub.base_amount || 500) + ((sub.additional_users || 0) * parseFloat(sub.additional_user_amount || 99)) : 0);
+  const includedUsers = billing?.includedUsers || sub?.included_users || 3;
+  const additionalUsers = billing?.additionalUsers || sub?.additional_users || 0;
+  const totalUsers = includedUsers + additionalUsers;
+
+  const statusColors = {
+    active: { bg: '#D1FAE5', color: '#059669', label: 'Active' },
+    trialing: { bg: '#DBEAFE', color: '#2563EB', label: 'Trial' },
+    past_due: { bg: '#FEF3C7', color: '#D97706', label: 'Past Due' },
+    paused: { bg: '#E5E7EB', color: '#6B7280', label: 'Paused' },
+    canceled: { bg: '#FEE2E2', color: '#DC2626', label: 'Canceled' },
+    locked: { bg: '#FEE2E2', color: '#DC2626', label: 'Locked' },
+    trial_expired: { bg: '#FEE2E2', color: '#DC2626', label: 'Trial Expired' },
+    none: { bg: '#F3F4F6', color: '#6B7280', label: 'No Subscription' },
+  };
+  const sc = statusColors[status] || statusColors.none;
 
   return (
     <div className="fade-in">
@@ -4533,29 +4611,92 @@ function BillingPage() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
               <div>
                 <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, opacity: 0.6, marginBottom: 4 }}>Current Plan</div>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: 32, fontWeight: 700 }}>FILO {plan}</div>
-                <div style={{ opacity: 0.7, marginTop: 4 }}>{userCount} user{userCount !== 1 ? 's' : ''} {statusLabel}</div>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 32, fontWeight: 700 }}>FILO Professional</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+                  <span style={{ display: "inline-block", padding: "2px 10px", borderRadius: 12, fontSize: 12, fontWeight: 600, background: sc.bg, color: sc.color }}>{sc.label}</span>
+                  <span style={{ opacity: 0.7 }}>{totalUsers} user{totalUsers !== 1 ? 's' : ''} ({includedUsers} included{additionalUsers > 0 ? ` + ${additionalUsers} extra` : ''})</span>
+                </div>
+                {billing?.isTrialing && billing?.trialEnd && (
+                  <div style={{ opacity: 0.7, marginTop: 4, fontSize: 13 }}>Trial ends {new Date(billing.trialEnd).toLocaleDateString()}</div>
+                )}
+                {billing?.cancelAtPeriodEnd && billing?.currentPeriodEnd && (
+                  <div style={{ opacity: 0.7, marginTop: 4, fontSize: 13 }}>Cancels {new Date(billing.currentPeriodEnd).toLocaleDateString()}</div>
+                )}
               </div>
               <div style={{ textAlign: "right" }}>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: 40, fontWeight: 700 }}>{amount}</div>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 40, fontWeight: 700 }}>${monthlyTotal.toLocaleString()}</div>
                 <div style={{ opacity: 0.6 }}>/month</div>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="card">
+        <div className="card" style={{ marginBottom: 24 }}>
           <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", fontSize: 16 }}>Manage Subscription</h3></div>
           <div className="card-body">
-            <p style={{ fontSize: 14, color: "var(--filo-grey)", marginBottom: 16 }}>
-              Use the Stripe customer portal to update your payment method, view invoices, or change your plan.
-            </p>
-            <button className="btn btn-primary" onClick={handlePortal}>Open Billing Portal</button>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+              {status === 'none' || status === 'canceled' || status === 'trial_expired' || status === 'locked' ? (
+                <button className="btn btn-primary" disabled={actionLoading} onClick={handleCheckout}>
+                  {actionLoading ? 'Loading...' : 'Subscribe Now'}
+                </button>
+              ) : (
+                <>
+                  <button className="btn btn-primary" disabled={actionLoading} onClick={handlePortal}>Billing Portal</button>
+                  {billing?.cancelAtPeriodEnd && (
+                    <button className="btn btn-secondary" disabled={actionLoading}
+                      onClick={() => doAction(() => billingApi.current.reactivate(), 'Subscription reactivated!')}>
+                      Reactivate
+                    </button>
+                  )}
+                  {!billing?.cancelAtPeriodEnd && isActive && (
+                    <button className="btn btn-ghost" disabled={actionLoading}
+                      onClick={() => { if (confirm('Cancel subscription at end of billing period?')) doAction(() => billingApi.current.cancel(false), 'Subscription will cancel at end of period.'); }}>
+                      Cancel
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+
+            {isActive && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 16, padding: 16, background: "var(--filo-offwhite)", borderRadius: "var(--radius-sm)" }}>
+              <div>
+                <div style={{ fontSize: 12, color: "var(--filo-grey)", marginBottom: 4 }}>Base Plan</div>
+                <div style={{ fontWeight: 600 }}>${parseFloat(sub?.base_amount || 500).toLocaleString()}/mo ({includedUsers} users)</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: "var(--filo-grey)", marginBottom: 4 }}>Additional Users</div>
+                <div style={{ fontWeight: 600 }}>{additionalUsers} x ${parseFloat(sub?.additional_user_amount || 99)}/mo</div>
+              </div>
+            </div>
+            )}
+
             <div style={{ marginTop: 16, padding: 12, background: "#FEF3C7", borderRadius: "var(--radius-sm)", fontSize: 12, color: "#92400E" }}>
               If your subscription lapses, account access will be locked. You can still export documents before cancellation.
             </div>
           </div>
         </div>
+
+        {invoices.length > 0 && (
+        <div className="card">
+          <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)", fontSize: 16 }}>Recent Invoices</h3></div>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Date</th><th>Amount</th><th>Status</th><th></th></tr></thead>
+              <tbody>
+                {invoices.slice(0, 10).map(inv => (
+                  <tr key={inv.id}>
+                    <td>{new Date((inv.created || inv.date) * 1000).toLocaleDateString()}</td>
+                    <td style={{ fontWeight: 600 }}>${((inv.amount_due || inv.amount || 0) / 100).toFixed(2)}</td>
+                    <td><span className="status-badge" style={{ background: inv.status === 'paid' ? '#D1FAE5' : '#FEF3C7', color: inv.status === 'paid' ? '#059669' : '#D97706' }}>{inv.status}</span></td>
+                    <td>{(inv.hosted_invoice_url || inv.hostedUrl) && <a href={inv.hosted_invoice_url || inv.hostedUrl} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm">View</a>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        )}
         </>
         )}
       </div>
@@ -4781,7 +4922,10 @@ function ForgotPasswordPage({ onShowLogin }) {
 
   const handleReset = async () => {
     if (!token) { setError("Enter the reset code from your email"); return; }
-    if (!password || password.length < 8) { setError("Password must be at least 8 characters"); return; }
+    if (!password || password.length < 10) { setError("Password must be at least 10 characters, with uppercase, lowercase, and a number"); return; }
+    if (!/[A-Z]/.test(password)) { setError("Password must contain at least one uppercase letter"); return; }
+    if (!/[a-z]/.test(password)) { setError("Password must contain at least one lowercase letter"); return; }
+    if (!/[0-9]/.test(password)) { setError("Password must contain at least one number"); return; }
     if (password !== confirm) { setError("Passwords don't match"); return; }
     setLoading(true); setError("");
     try {
@@ -4958,7 +5102,10 @@ function InviteAcceptPage({ inviteToken, onAccepted }) {
   const [success, setSuccess] = useState(false);
 
   const handleSubmit = async () => {
-    if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
+    if (password.length < 10) { setError("Password must be at least 10 characters, with uppercase, lowercase, and a number."); return; }
+    if (!/[A-Z]/.test(password)) { setError("Password must contain at least one uppercase letter."); return; }
+    if (!/[a-z]/.test(password)) { setError("Password must contain at least one lowercase letter."); return; }
+    if (!/[0-9]/.test(password)) { setError("Password must contain at least one number."); return; }
     if (password !== confirm) { setError("Passwords do not match."); return; }
     setLoading(true);
     setError("");
@@ -5024,7 +5171,10 @@ function RegisterPage({ onRegister, onShowLogin }) {
     if (!form.companyName || !form.firstName || !form.lastName || !form.email || !form.password) {
       setError("All fields except phone are required"); return;
     }
-    if (form.password.length < 8) { setError("Password must be at least 8 characters"); return; }
+    if (form.password.length < 10) { setError("Password must be at least 10 characters, with uppercase, lowercase, and a number"); return; }
+    if (!/[A-Z]/.test(form.password)) { setError("Password must contain at least one uppercase letter"); return; }
+    if (!/[a-z]/.test(form.password)) { setError("Password must contain at least one lowercase letter"); return; }
+    if (!/[0-9]/.test(form.password)) { setError("Password must contain at least one number"); return; }
     if (form.password !== form.confirmPassword) { setError("Passwords don't match"); return; }
     setLoading(true);
     setError("");
@@ -5218,6 +5368,7 @@ function OnboardingWizard({ onComplete }) {
   const handleLogoSelect = (e) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (logoPreview) URL.revokeObjectURL(logoPreview);
       setLogoFile(file);
       setLogoPreview(URL.createObjectURL(file));
     }
@@ -5396,7 +5547,7 @@ function OnboardingWizard({ onComplete }) {
         )}
         {step === 8 && (
           <div>
-            <p style={{ fontSize: 14, color: "var(--filo-grey)", marginBottom: 16 }}>Your plan includes 3 users. Additional users are $500/mo each.</p>
+            <p style={{ fontSize: 14, color: "var(--filo-grey)", marginBottom: 16 }}>Your plan includes 3 users. Additional users are $99/mo each.</p>
             {invites.map((inv, i) => (
               <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
                 <input className="form-input" placeholder={`Team member ${i + 1} email`} style={{ flex: 1 }}
@@ -5505,18 +5656,18 @@ export default function App() {
   const openProject = (id) => { setSelectedProjectId(id); setPage("project-detail"); };
 
   const pages = {
-    dashboard: <DashboardPage setPage={setPage} openProject={openProject} />,
-    projects: <ProjectsPage setPage={setPage} openProject={openProject} />,
-    "project-detail": <ProjectDetailPage projectId={selectedProjectId} setPage={setPage} />,
+    dashboard: <ErrorBoundary><DashboardPage setPage={setPage} openProject={openProject} /></ErrorBoundary>,
+    projects: <ErrorBoundary><ProjectsPage setPage={setPage} openProject={openProject} /></ErrorBoundary>,
+    "project-detail": <ErrorBoundary><ProjectDetailPage projectId={selectedProjectId} setPage={setPage} /></ErrorBoundary>,
     "new-project": <ErrorBoundary><NewProjectPage /></ErrorBoundary>,
-    clients: <ClientsPage />,
-    plants: <PlantLibraryPage />,
-    estimates: <EstimatesPage />,
-    submittals: <SubmittalsPage />,
-    crm: <CRMPage />,
-    settings: <SettingsPage />,
-    billing: <BillingPage />,
-    team: <TeamPage />,
+    clients: <ErrorBoundary><ClientsPage /></ErrorBoundary>,
+    plants: <ErrorBoundary><PlantLibraryPage /></ErrorBoundary>,
+    estimates: <ErrorBoundary><EstimatesPage setPage={setPage} openProject={openProject} /></ErrorBoundary>,
+    submittals: <ErrorBoundary><SubmittalsPage /></ErrorBoundary>,
+    crm: <ErrorBoundary><CRMPage /></ErrorBoundary>,
+    settings: <ErrorBoundary><SettingsPage /></ErrorBoundary>,
+    billing: <ErrorBoundary><BillingPage /></ErrorBoundary>,
+    team: <ErrorBoundary><TeamPage /></ErrorBoundary>,
   };
 
   if (view === "loading") return (

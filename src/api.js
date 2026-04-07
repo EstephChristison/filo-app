@@ -24,6 +24,10 @@ function clearTokens() {
   localStorage.removeItem('filo_token');
   localStorage.removeItem('filo_refresh_token');
   localStorage.removeItem('filo_user');
+  // Clear wizard PII data on logout
+  localStorage.removeItem('filo_wizard_checkpoint');
+  localStorage.removeItem('filo_removal_preview');
+  localStorage.removeItem('filo_bed_edge_preview');
 }
 
 function getStoredUser() {
@@ -100,11 +104,15 @@ async function apiFetch(path, options = {}) {
     if (refreshed) {
       // Retry the original request with new token
       headers['Authorization'] = `Bearer ${getToken()}`;
+      const retryController = new AbortController();
+      const retryTimeout = setTimeout(() => retryController.abort(), 30000);
       response = await fetch(url, {
         ...options,
         headers,
+        signal: retryController.signal,
         body: options.body ? JSON.stringify(options.body) : undefined,
       });
+      clearTimeout(retryTimeout);
     } else {
       clearTokens();
       window.location.href = '/';
@@ -125,27 +133,42 @@ async function apiFetch(path, options = {}) {
     throw new Error(error.error || error.message || `Request failed: ${response.status}`);
   }
 
+  if (response.status === 204 || response.headers.get('content-length') === '0') return {};
   return response.json();
 }
 
+// Mutex: prevent concurrent refresh attempts from racing and invalidating each other
+let refreshPromise = null;
+
 async function refreshAccessToken() {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    try {
+      const refreshToken = getRefreshToken();
+      if (!refreshToken) return false;
+
+      const response = await fetch(`${API_BASE}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+
+      if (!response.ok) return false;
+
+      const data = await response.json();
+      // Store both tokens — if backend rotates refresh token, we must save the new one
+      setTokens(data.token, data.refreshToken);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+
   try {
-    const refreshToken = getRefreshToken();
-    if (!refreshToken) return false;
-
-    const response = await fetch(`${API_BASE}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
-    });
-
-    if (!response.ok) return false;
-
-    const data = await response.json();
-    setTokens(data.token);
-    return true;
-  } catch {
-    return false;
+    return await refreshPromise;
+  } finally {
+    refreshPromise = null;
   }
 }
 
@@ -383,7 +406,7 @@ export const plants = {
   },
 
   async deleteAll() {
-    return apiFetch('/plants/all', { method: 'DELETE' });
+    return apiFetch('/plants/all?confirm=true', { method: 'DELETE' });
   },
 };
 
@@ -546,8 +569,24 @@ export const designs = {
 // ═══════════════════════════════════════════════════════════════════
 
 export const estimates = {
+  async list(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return apiFetch(`/estimates${query ? `?${query}` : ''}`);
+  },
+
   async get(id) {
     return apiFetch(`/estimates/${id}`);
+  },
+
+  async update(id, fields) {
+    return apiFetch(`/estimates/${id}`, { method: 'PUT', body: fields });
+  },
+
+  async addLineItem(estimateId, item) {
+    return apiFetch(`/estimates/${estimateId}/line-items`, {
+      method: 'POST',
+      body: item,
+    });
   },
 
   async updateLineItem(estimateId, lineItemId, fields) {
@@ -577,6 +616,10 @@ export const estimates = {
 export const submittals = {
   async get(id) {
     return apiFetch(`/submittals/${id}`);
+  },
+
+  async update(id, fields) {
+    return apiFetch(`/submittals/${id}`, { method: 'PUT', body: fields });
   },
 
   async generatePDF(id, { designRenderUrl } = {}) {
@@ -684,6 +727,10 @@ export const billing = {
     return apiFetch('/billing/subscribe', { method: 'POST', body: { paymentMethodId } });
   },
 
+  async checkout(successUrl, cancelUrl) {
+    return apiFetch('/billing/checkout', { method: 'POST', body: { successUrl, cancelUrl } });
+  },
+
   async portal(returnUrl) {
     return apiFetch('/billing/portal', { method: 'POST', body: { returnUrl } });
   },
@@ -692,8 +739,36 @@ export const billing = {
     return apiFetch('/billing/cancel', { method: 'POST', body: { immediate } });
   },
 
+  async reactivate() {
+    return apiFetch('/billing/reactivate', { method: 'POST' });
+  },
+
+  async pause() {
+    return apiFetch('/billing/pause', { method: 'POST' });
+  },
+
+  async resume() {
+    return apiFetch('/billing/resume', { method: 'POST' });
+  },
+
   async invoices() {
     return apiFetch('/billing/invoices');
+  },
+
+  async upcoming() {
+    return apiFetch('/billing/upcoming');
+  },
+
+  async addUser() {
+    return apiFetch('/billing/add-user', { method: 'POST' });
+  },
+
+  async removeUser() {
+    return apiFetch('/billing/remove-user', { method: 'POST' });
+  },
+
+  async updatePaymentMethod(paymentMethodId) {
+    return apiFetch('/billing/payment-method', { method: 'PUT', body: { paymentMethodId } });
   },
 };
 
