@@ -21,34 +21,6 @@ const MOCK_PROJECTS = import.meta.env.DEV ? [
   { id: "PRJ-004", client: "Williams Home", address: "3310 Piping Rock Ln", status: "completed", areas: ["Front Yard", "Back Yard", "Side Yard"], date: "2026-03-10", total: 34200 },
 ] : [];
 
-const MOCK_ESTIMATE = import.meta.env.DEV ? {
-  id: "EST-001",
-  project_id: "PRJ-001",
-  status: "draft",
-  tax_rate: 0.0825,
-  tax_enabled: true,
-  material_markup: 35,
-  subtotal: 8747.08,
-  tax_amount: 721.63,
-  total: 9468.71,
-  line_items: [
-    { id: 1, category: "plant_material", description: "Loropetalum 'Purple Diamond' (3-gal)", botanical: "Loropetalum chinense", container_size: "3-gal", quantity: 5, unit: "ea", unit_price: 38.48, wholesale_price: 28.50, retail_price: 38.48, total_price: 192.38, sort_order: 0 },
-    { id: 2, category: "plant_material", description: "Indian Hawthorn 'Clara' (3-gal)", botanical: "Rhaphiolepis indica", container_size: "3-gal", quantity: 8, unit: "ea", unit_price: 29.70, wholesale_price: 22.00, retail_price: 29.70, total_price: 237.60, sort_order: 1 },
-    { id: 3, category: "plant_material", description: "Gulf Muhly Grass (1-gal)", botanical: "Muhlenbergia capillaris", container_size: "1-gal", quantity: 12, unit: "ea", unit_price: 16.88, wholesale_price: 12.50, retail_price: 16.88, total_price: 202.50, sort_order: 2 },
-    { id: 4, category: "plant_material", description: "Dwarf Yaupon Holly (3-gal)", botanical: "Ilex vomitoria 'Nana'", container_size: "3-gal", quantity: 6, unit: "ea", unit_price: 32.40, wholesale_price: 24.00, retail_price: 32.40, total_price: 194.40, sort_order: 3 },
-    { id: 5, category: "plant_material", description: "Knockout Rose 'Double Red' (3-gal)", botanical: "Rosa x 'Radtko'", container_size: "3-gal", quantity: 4, unit: "ea", unit_price: 35.10, wholesale_price: 26.00, retail_price: 35.10, total_price: 140.40, sort_order: 4 },
-    { id: 6, category: "plant_material", description: "Ligustrum 'Sunshine' (5-gal)", botanical: "Ligustrum sinense", container_size: "5-gal", quantity: 3, unit: "ea", unit_price: 51.30, wholesale_price: 38.00, retail_price: 51.30, total_price: 153.90, sort_order: 5 },
-    { id: 7, category: "plant_material", description: "Crape Myrtle 'Natchez' (15-gal)", botanical: "Lagerstroemia indica", container_size: "15-gal", quantity: 2, unit: "ea", unit_price: 195.75, wholesale_price: 145.00, retail_price: 195.75, total_price: 391.50, sort_order: 6 },
-    { id: 8, category: "plant_material", description: "Asiatic Jasmine (1-gal)", botanical: "Trachelospermum asiaticum", container_size: "1-gal", quantity: 24, unit: "ea", unit_price: 11.48, wholesale_price: 8.50, retail_price: 11.48, total_price: 275.40, sort_order: 7 },
-    { id: 9, category: "labor", description: "Installation Labor", quantity: 1, unit: "ea", unit_price: 4800, total_price: 4800, sort_order: 8 },
-    { id: 10, category: "soil_amendment", description: "Soil Amendments", quantity: 1, unit: "ea", unit_price: 285, total_price: 285, sort_order: 9 },
-    { id: 11, category: "mulch", description: "Hardwood Mulch", quantity: 1, unit: "ea", unit_price: 340, total_price: 340, sort_order: 10 },
-    { id: 12, category: "edging", description: "Steel Edging", quantity: 1, unit: "ea", unit_price: 480, total_price: 480, sort_order: 11 },
-    { id: 13, category: "delivery", description: "Delivery", quantity: 1, unit: "ea", unit_price: 150, total_price: 150, sort_order: 12 },
-    { id: 14, category: "removal_disposal", description: "Plant Removal & Disposal (lump sum)", quantity: 1, unit: "ea", unit_price: 350, total_price: 350, sort_order: 13 },
-  ],
-} : null;
-
 const STATUS_MAP = {
   photo_upload: { label: "Photos", color: "#6B7280", step: 1 },
   plant_detection: { label: "Bed Prep", color: "#F59E0B", step: 2 },
@@ -130,7 +102,10 @@ const STYLES = `
   --font-body: 'DM Sans', system-ui, sans-serif;
   --radius: 12px;
   --radius-sm: 8px;
+  --radius-md: 12px;
   --radius-lg: 20px;
+  --filo-border: #E5E7EB;
+  --filo-bg: #F9FAFB;
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
   --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
   --shadow-lg: 0 12px 40px rgba(0,0,0,0.12);
@@ -570,7 +545,7 @@ function Sidebar({ page, setPage, mobileOpen, setMobileOpen, user }) {
 // ─── Top Bar ─────────────────────────────────────────────────────
 function TopBar({ page, setMobileOpen }) {
   const titles = {
-    projects: "Projects", "new-project": "New Project",
+    dashboard: "Dashboard", projects: "Projects", "new-project": "New Project",
     clients: "Clients", plants: "Products & Services",
     estimates: "Estimates", submittals: "Submittals", crm: "CRM Integration",
     settings: "Settings", billing: "Billing", team: "Team",
@@ -591,7 +566,9 @@ function TopBar({ page, setMobileOpen }) {
 
 // ─── Dashboard ───────────────────────────────────────────────────
 function DashboardPage({ setPage, openProject }) {
-  const [recentProjects, setRecentProjects] = useState(MOCK_PROJECTS);
+  const [recentProjects, setRecentProjects] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [pageError, setPageError] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -600,10 +577,11 @@ function DashboardPage({ setPage, openProject }) {
         const mod = await import('./api.js');
         const result = await mod.projects.list({ limit: 10 });
         const list = Array.isArray(result) ? result : result.projects || [];
-        if (!cancelled && list.length > 0) setRecentProjects(list);
+        if (!cancelled) setRecentProjects(list);
       } catch (err) {
         console.error('Failed to load recent projects:', err.message);
-      }
+        if (!cancelled) setPageError('Failed to load projects: ' + err.message);
+      } finally { if (!cancelled) setLoading(false); }
     };
     load();
     return () => { cancelled = true; };
@@ -635,6 +613,19 @@ function DashboardPage({ setPage, openProject }) {
         </button>
       </div>
       <div className="page-body">
+        {pageError && (
+          <div style={{ padding: 12, background: '#FEE2E2', borderRadius: 8, marginBottom: 16, color: '#991B1B', fontSize: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>{pageError}</span>
+            <button onClick={() => setPageError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16 }}>&#10005;</button>
+          </div>
+        )}
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 48, color: "var(--filo-grey)" }}>
+            <div className="spinner" style={{ margin: "0 auto 12px" }}></div>
+            <p>Loading dashboard...</p>
+          </div>
+        ) : (
+        <>
         <div className="stat-grid">
           {stats.map((s, i) => (
             <div className="stat-card fade-in" key={i} style={{ animationDelay: `${i * 0.08}s` }}>
@@ -652,6 +643,11 @@ function DashboardPage({ setPage, openProject }) {
             <h3 style={{ fontFamily: "var(--font-display)", fontSize: 18 }}>Recent Projects</h3>
             <button className="btn btn-ghost btn-sm" onClick={() => setPage("projects")}>View All →</button>
           </div>
+          {recentProjects.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 40, color: "var(--filo-grey)" }}>
+              No projects yet. Click "New Project" to get started.
+            </div>
+          ) : (
           <div className="table-wrap">
             <table>
               <thead>
@@ -679,6 +675,7 @@ function DashboardPage({ setPage, openProject }) {
               </tbody>
             </table>
           </div>
+          )}
         </div>
 
         <div className="card">
@@ -690,6 +687,8 @@ function DashboardPage({ setPage, openProject }) {
             <button className="btn btn-secondary" onClick={() => setPage("clients")}>👥 Clients</button>
           </div>
         </div>
+        </>
+        )}
       </div>
     </div>
   );
@@ -698,7 +697,7 @@ function DashboardPage({ setPage, openProject }) {
 // ─── Projects Page ───────────────────────────────────────────────
 function ProjectsPage({ setPage, openProject }) {
   const [filter, setFilter] = useState("all");
-  const [projects, setProjectsList] = useState(MOCK_PROJECTS);
+  const [projects, setProjectsList] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -708,7 +707,7 @@ function ProjectsPage({ setPage, openProject }) {
         const mod = await import('./api.js');
         const result = await mod.projects.list();
         const list = Array.isArray(result) ? result : result.projects || [];
-        if (!cancelled) setProjectsList(list.length > 0 ? list : MOCK_PROJECTS);
+        if (!cancelled) setProjectsList(list);
       } catch (err) {
         console.error('Failed to load projects:', err.message);
         if (!cancelled) setProjectsList(MOCK_PROJECTS);
@@ -1009,6 +1008,7 @@ function NewProjectPage() {
   const [step, setStep] = useState(saved?.step || 1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
   const [apiReady, setApiReady] = useState(false);
   const apiRef = useRef(null);
   const fileInputRefs = useRef({});
@@ -1096,27 +1096,32 @@ function NewProjectPage() {
   const [designPlants, setDesignPlants] = useState(saved?.designPlants || []);
   const [chatMessages, setChatMessages] = useState(saved?.chatMessages || []);
   const [chatInput, setChatInput] = useState("");
-  const [estimate, setEstimate] = useState(saved?.estimate || MOCK_ESTIMATE);
+  const [estimate, setEstimate] = useState(saved?.estimate || null);
   const [estimateApproved, setEstimateApproved] = useState(saved?.estimateApproved || false);
   const [submittal, setSubmittal] = useState(saved?.submittal || null);
   const [exportData, setExportData] = useState(saved?.exportData || null);
 
   // Load API module
   useEffect(() => {
+    let cancelled = false;
     import("./api.js").then(mod => {
+      if (cancelled) return;
       apiRef.current = mod.default;
       setApiReady(true);
-      mod.default.company.get().then(c => { if (c?.name) setCompanyName(c.name); }).catch(() => {});
+      mod.default.company.get().then(c => { if (!cancelled && c?.name) setCompanyName(c.name); }).catch(() => {});
     }).catch(console.error);
+    return () => { cancelled = true; };
   }, []);
 
   // ─── Load saved prompts when reaching AI Design step ───
   useEffect(() => {
+    let cancelled = false;
     if (step === 5 && apiRef.current) {
       apiRef.current.savedPrompts.list().then(res => {
-        setSavedPromptsList(res.prompts || []);
+        if (!cancelled) setSavedPromptsList(res.prompts || []);
       }).catch((err) => { console.error('Failed to load saved prompts:', err); });
     }
+    return () => { cancelled = true; };
   }, [step]);
 
   // ─── Checkpoint: auto-save wizard state on every step change ───
@@ -1233,9 +1238,13 @@ function NewProjectPage() {
       switch (step) {
         case 1: {
           // Create client
-          if (!project.clientName || !project.address) throw new Error("Client name and address are required.");
-          if (project.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(project.email)) throw new Error("Please enter a valid email address.");
-          if (project.phone && project.phone.replace(/\D/g, '').length < 7) throw new Error("Please enter a valid phone number.");
+          const fErrs = {};
+          if (!project.clientName) fErrs.clientName = 'Client name is required';
+          if (!project.address) fErrs.address = 'Property address is required';
+          if (project.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(project.email)) fErrs.email = 'Enter a valid email address';
+          if (project.phone && project.phone.replace(/\D/g, '').length < 7) fErrs.phone = 'Enter a valid phone number';
+          if (Object.keys(fErrs).length > 0) { setFieldErrors(fErrs); throw new Error(Object.values(fErrs)[0] + '.'); }
+          setFieldErrors({});
           const client = await api.clients.create({
             name: project.clientName,
             address: project.address,
@@ -1320,13 +1329,14 @@ function NewProjectPage() {
           for (const [plantId, mark] of Object.entries(plantMarks)) {
             try {
               await api.existingPlants.mark(plantId, mark, mark === 'remove' ? 'Marked for removal' : '');
-            } catch (e) { console.log("Could not mark plant:", e.message); }
+            } catch (err) { console.warn('Failed to save plant mark:', err.message); }
           }
           setStep(5);
           break;
         }
         case 5: {
           // AI Design step — save preferences, generate design if not done, then move to Review
+          let designFailed = false;
           if (projectId) {
             await api.projects.update(projectId, {
               sun_exposure: project.sun,
@@ -1337,7 +1347,6 @@ function NewProjectPage() {
             });
             // Generate design if not already done
             let finalPlants = designPlants;
-            let designFailed = false;
             if (!design || designPlants.length === 0) {
               await api.projects.updateStatus(projectId, 'design_generation');
               try {
@@ -1418,7 +1427,7 @@ function NewProjectPage() {
               try {
                 await api.estimates.approve(estimate.id);
                 setEstimateApproved(true);
-              } catch (e) { console.log("Estimate approve error:", e.message); }
+              } catch (err) { console.error('Estimate approval failed:', err.message); setError('Failed to approve estimate: ' + err.message); }
             }
             try {
               const sub = await api.projects.generateSubmittal(projectId);
@@ -1427,7 +1436,6 @@ function NewProjectPage() {
               if (raw.scope_narrative && !raw.narrative) raw.narrative = raw.scope_narrative;
               setSubmittal(raw);
             } catch (e) {
-              console.log("Submittal generation error:", e.message);
               setError('Submittal generation failed: ' + e.message);
               return; // Don't advance to step 8 on failure
             }
@@ -1441,11 +1449,11 @@ function NewProjectPage() {
             await api.projects.updateStatus(projectId, 'completed');
             try {
               await api.crm.syncProject(projectId);
-            } catch (e) { console.log("CRM sync:", e.message); }
+            } catch (err) { console.warn('CRM sync skipped:', err.message); }
             try {
               const exp = await api.projects.exportAll(projectId);
               setExportData(exp);
-            } catch (e) { console.log("Export error:", e.message); }
+            } catch (err) { console.warn('Export data unavailable:', err.message); }
           }
           localStorage.removeItem('filo_wizard_checkpoint');
           setPage('projects');
@@ -1601,23 +1609,31 @@ function NewProjectPage() {
               <div className="form-group">
                 <label className="form-label">Client Name *</label>
                 <input className="form-input" placeholder="e.g. Johnson Residence" value={project.clientName}
-                  onChange={e => updateProject({ clientName: e.target.value })} />
+                  onChange={e => { updateProject({ clientName: e.target.value }); setFieldErrors(p => ({ ...p, clientName: undefined })); }}
+                  style={fieldErrors.clientName ? { borderColor: '#DC2626' } : {}} />
+                {fieldErrors.clientName && <div style={{ color: '#DC2626', fontSize: 12, marginTop: 4 }}>{fieldErrors.clientName}</div>}
               </div>
               <div className="form-group">
                 <label className="form-label">Property Address *</label>
                 <input className="form-input" placeholder="4521 River Oaks Blvd, Houston, TX" value={project.address}
-                  onChange={e => updateProject({ address: e.target.value })} />
+                  onChange={e => { updateProject({ address: e.target.value }); setFieldErrors(p => ({ ...p, address: undefined })); }}
+                  style={fieldErrors.address ? { borderColor: '#DC2626' } : {}} />
+                {fieldErrors.address && <div style={{ color: '#DC2626', fontSize: 12, marginTop: 4 }}>{fieldErrors.address}</div>}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                 <div className="form-group">
                   <label className="form-label">Phone</label>
                   <input className="form-input" placeholder="(713) 555-0199" value={project.phone}
-                    onChange={e => updateProject({ phone: e.target.value })} />
+                    onChange={e => { updateProject({ phone: e.target.value }); setFieldErrors(p => ({ ...p, phone: undefined })); }}
+                    style={fieldErrors.phone ? { borderColor: '#DC2626' } : {}} />
+                  {fieldErrors.phone && <div style={{ color: '#DC2626', fontSize: 12, marginTop: 4 }}>{fieldErrors.phone}</div>}
                 </div>
                 <div className="form-group">
                   <label className="form-label">Email</label>
                   <input className="form-input" placeholder="client@email.com" value={project.email}
-                    onChange={e => updateProject({ email: e.target.value })} />
+                    onChange={e => { updateProject({ email: e.target.value }); setFieldErrors(p => ({ ...p, email: undefined })); }}
+                    style={fieldErrors.email ? { borderColor: '#DC2626' } : {}} />
+                  {fieldErrors.email && <div style={{ color: '#DC2626', fontSize: 12, marginTop: 4 }}>{fieldErrors.email}</div>}
                 </div>
               </div>
               <div style={{ padding: 16, background: "var(--filo-green-pale)", borderRadius: "var(--radius-sm)", fontSize: 13, color: "var(--filo-green)" }}>
@@ -2279,7 +2295,7 @@ function NewProjectPage() {
             ...(ungrouped.length && (backPlants.length || middlePlants.length || frontPlants.length) ? [{ key:'other', plants: ungrouped }] : []),
           ];
           const allGrouped = layerGroups.length > 0;
-          const photoUrls = Object.values(uploadedPhotos).flat().map(p => p?.file?.cdn_url || p?.cdn_url).filter(Boolean);
+          const photoUrls = Object.values(uploadedPhotos || {}).flat().map(p => p?.file?.cdn_url || p?.cdn_url).filter(Boolean);
           const narrative = design?.narrative || design?.ai_prompt?.narrative || '';
 
           return (
@@ -2910,7 +2926,7 @@ function NewProjectPage() {
                         <img src={designRenderUrl} alt="Design" style={{ width: "100%", display: "block", pointerEvents: "none" }} draggable={false}
                           onLoad={() => {
                             const canvas = hardscapeCanvasRef.current;
-                            if (canvas) { const c = canvas.parentElement; canvas.width = c.clientWidth; canvas.height = c.clientHeight; }
+                            if (canvas?.parentElement) { canvas.width = canvas.parentElement.clientWidth; canvas.height = canvas.parentElement.clientHeight; }
                           }} />
                         <canvas
                           ref={hardscapeCanvasRef}
@@ -3121,7 +3137,7 @@ function NewProjectPage() {
             quantity: p.quantity || 1,
             container_size: p.container_size || '',
             wholesale_price: parseFloat(p.wholesale_price) || 0,
-            retail_price: parseFloat(p.retail_price) || parseFloat(p.wholesale_price) * 1.35 || 0,
+            retail_price: Number.isFinite(parseFloat(p.retail_price)) ? parseFloat(p.retail_price) : (parseFloat(p.wholesale_price) * 1.35 || 0),
             layer: p.layer || '',
           }));
           // Use server estimate line items if available, otherwise build from designPlants
@@ -3132,8 +3148,8 @@ function NewProjectPage() {
           const otherItems = serverItems.filter(li => !['plant_material', 'plant', 'labor'].includes(li.category) && !['plant', 'labor'].includes(li.line_type));
 
           const materialTotal = bomItems.reduce((sum, li) => sum + ((li.retail_price || li.unit_cost || li.unit_price || 0) * (li.quantity || 1)), 0);
-          const laborTotal = laborItems.reduce((sum, li) => sum + (li.total || (li.quantity * (li.unit_cost || li.unit_price || 0))), 0);
-          const otherTotal = otherItems.reduce((sum, li) => sum + (li.total || (li.quantity * (li.unit_cost || li.unit_price || 0))), 0);
+          const laborTotal = laborItems.reduce((sum, li) => sum + (li.total || ((li.quantity || 1) * (li.unit_cost || li.unit_price || 0))), 0);
+          const otherTotal = otherItems.reduce((sum, li) => sum + (li.total || ((li.quantity || 1) * (li.unit_cost || li.unit_price || 0))), 0);
           const subtotal = estimate?.subtotal || (materialTotal + laborTotal + otherTotal);
           const taxRate = parseFloat(estimate?.tax_rate) || 0.0825;
           const tax = estimate?.tax_amount || estimate?.tax || (subtotal * taxRate);
@@ -3262,10 +3278,15 @@ function NewProjectPage() {
                   <button className="btn btn-primary btn-lg" style={{ flex: 1 }}
                     onClick={async () => {
                       if (estimate?.id && apiRef.current) {
-                        try { await apiRef.current.estimates.approve(estimate.id); } catch (e) { console.log("Estimate approve error:", e.message); }
+                        try {
+                          await apiRef.current.estimates.approve(estimate.id);
+                        } catch (err) {
+                          setError('Failed to approve estimate: ' + err.message);
+                          return;
+                        }
                       }
                       setEstimateApproved(true);
-                    }} disabled={estimateApproved}>
+                    }} disabled={estimateApproved || loading}>
                     {estimateApproved ? "Approved" : "Approve Estimate"}
                   </button>
                 </div>
@@ -3396,7 +3417,7 @@ function NewProjectPage() {
                 {[
                   ["✅", `Client "${project.clientName}" created`],
                   ["✅", `Project with ${Object.keys(areaMap).length} area(s) saved`],
-                  ["✅", `${Object.values(uploadedPhotos).flat().length || 0} photos uploaded`],
+                  ["✅", `${Object.values(uploadedPhotos || {}).flat().length || 0} photos uploaded`],
                   ["✅", design ? "AI design generated" : "Design pending"],
                   ["✅", estimate ? `Estimate: ${fmt(estimate.total || estimate.grand_total || 0)}` : "Estimate pending"],
                   ["✅", submittal ? "Submittal generated" : "Submittal pending"],
@@ -3434,6 +3455,9 @@ function PlantLibraryPage() {
   const [editing, setEditing] = useState(null);
   const [editFields, setEditFields] = useState({});
   const [pageError, setPageError] = useState(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newProductName, setNewProductName] = useState('');
+  const [addingSaving, setAddingSaving] = useState(false);
 
   const loadProducts = useCallback(async () => {
     try {
@@ -3588,12 +3612,7 @@ function PlantLibraryPage() {
           <button className="btn btn-ghost btn-sm" onClick={() => setShowTrash(true)}>
             Trash {trash.length > 0 && <span style={{ marginLeft: 4, background: "var(--filo-red)", color: "#fff", borderRadius: 10, padding: "1px 6px", fontSize: 11 }}>{trash.length}</span>}
           </button>
-          {isAdmin && <button className="btn btn-primary" onClick={() => {
-            const name = prompt('Product/plant name:');
-            if (!name?.trim()) return;
-            plantsApi.create({ common_name: name.trim() }).then(() => loadProducts())
-              .catch(err => setPageError('Failed: ' + err.message));
-          }}>+ Add Product</button>}
+          {isAdmin && <button className="btn btn-primary" onClick={() => { setShowAddForm(true); setNewProductName(''); }}>+ Add Product</button>}
         </div>
       </div>
       <div className="page-body">
@@ -3601,6 +3620,38 @@ function PlantLibraryPage() {
           <div style={{ padding: 12, background: '#FEE2E2', borderRadius: 8, marginBottom: 16, color: '#991B1B', fontSize: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>{pageError}</span>
             <button onClick={() => setPageError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16 }}>&#10005;</button>
+          </div>
+        )}
+        {showAddForm && (
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>New Product</h3></div>
+            <div className="card-body">
+              <div style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
+                <div style={{ flex: 1 }}>
+                  <label className="form-label">Product / Plant Name *</label>
+                  <input className="form-input" placeholder="e.g. Knockout Rose" value={newProductName}
+                    onChange={e => setNewProductName(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && newProductName.trim() && !addingSaving) {
+                        setAddingSaving(true);
+                        plantsApi.create({ common_name: newProductName.trim() }).then(() => { loadProducts(); setShowAddForm(false); setNewProductName(''); })
+                          .catch(err => setPageError('Failed: ' + err.message)).finally(() => setAddingSaving(false));
+                      }
+                    }}
+                    style={!newProductName.trim() && newProductName !== '' ? { borderColor: '#DC2626' } : {}}
+                    autoFocus />
+                  {!newProductName.trim() && newProductName !== '' && (
+                    <div style={{ color: '#DC2626', fontSize: 12, marginTop: 4 }}>Product name is required</div>
+                  )}
+                </div>
+                <button className="btn btn-primary" disabled={!newProductName.trim() || addingSaving} onClick={() => {
+                  setAddingSaving(true);
+                  plantsApi.create({ common_name: newProductName.trim() }).then(() => { loadProducts(); setShowAddForm(false); setNewProductName(''); })
+                    .catch(err => setPageError('Failed: ' + err.message)).finally(() => setAddingSaving(false));
+                }}>{addingSaving ? 'Adding...' : 'Add'}</button>
+                <button className="btn btn-ghost" onClick={() => { setShowAddForm(false); setNewProductName(''); }}>Cancel</button>
+              </div>
+            </div>
           </div>
         )}
         <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap", alignItems: "center" }}>
@@ -3695,6 +3746,7 @@ function PlantLibraryPage() {
 function EstimatesPage({ setPage, openProject }) {
   const [estimates, setEstimates] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [pageError, setPageError] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -3721,6 +3773,7 @@ function EstimatesPage({ setPage, openProject }) {
         if (!cancelled) setEstimates(allEstimates);
       } catch (err) {
         console.error('Failed to load estimates:', err.message);
+        if (!cancelled) setPageError('Failed to load estimates: ' + err.message);
       } finally { if (!cancelled) setLoading(false); }
     };
     load();
@@ -3738,6 +3791,12 @@ function EstimatesPage({ setPage, openProject }) {
         <div><h2>Estimates</h2><p>Manage all project estimates</p></div>
       </div>
       <div className="page-body">
+        {pageError && (
+          <div style={{ padding: 12, background: '#FEE2E2', borderRadius: 8, marginBottom: 16, color: '#991B1B', fontSize: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>{pageError}</span>
+            <button onClick={() => setPageError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16 }}>&#10005;</button>
+          </div>
+        )}
         <div className="stat-grid">
           <div className="stat-card"><div className="stat-label">Pending Approval</div><div className="stat-value">{pending}</div></div>
           <div className="stat-card"><div className="stat-label">Approved</div><div className="stat-value">{approved}</div></div>
@@ -3809,6 +3868,7 @@ function SubmittalsPage() {
         if (!cancelled) setSubmittals(results.flat());
       } catch (err) {
         console.error('Failed to load submittals:', err.message);
+        if (!cancelled) setPageError('Failed to load submittals: ' + err.message);
       } finally { if (!cancelled) setLoading(false); }
     };
     load();
@@ -4009,29 +4069,42 @@ function ClientsPage() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
   const apiRef = useRef(null);
+  const mountedRef = useRef(true);
   const [newClient, setNewClient] = useState({ first_name: '', last_name: '', email: '', phone: '', address_line1: '', city: '', state: '', zip: '', notes: '' });
+  const [formErrors, setFormErrors] = useState({});
 
   const loadClients = async () => {
     try {
       const mod = await import('./api.js');
       apiRef.current = mod.default;
       const result = await mod.clients.list({ search });
-      setClients(Array.isArray(result) ? result : result.clients || []);
+      if (mountedRef.current) setClients(Array.isArray(result) ? result : result.clients || []);
     } catch (err) {
       console.error('Failed to load clients:', err.message);
-    } finally { setLoading(false); }
+    } finally { if (mountedRef.current) setLoading(false); }
   };
 
-  useEffect(() => { loadClients(); }, []);
+  useEffect(() => { loadClients(); return () => { mountedRef.current = false; }; }, []);
 
   const handleCreate = async () => {
-    if (!apiRef.current || (!newClient.first_name && !newClient.last_name && !newClient.email)) return;
+    if (!apiRef.current) return;
+    const errors = {};
+    if (!newClient.first_name.trim() && !newClient.last_name.trim() && !newClient.email.trim()) {
+      if (!newClient.first_name.trim()) errors.first_name = 'Name or email is required';
+      if (!newClient.email.trim()) errors.email = 'Name or email is required';
+    }
+    if (newClient.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newClient.email.trim())) {
+      errors.email = 'Enter a valid email address';
+    }
+    if (Object.keys(errors).length > 0) { setFormErrors(errors); return; }
+    setFormErrors({});
     setSaving(true); setMsg(null);
     try {
       const displayName = [newClient.first_name, newClient.last_name].filter(Boolean).join(' ') || newClient.email;
       await apiRef.current.clients.create({ ...newClient, display_name: displayName });
       setNewClient({ first_name: '', last_name: '', email: '', phone: '', address_line1: '', city: '', state: '', zip: '', notes: '' });
       setShowAdd(false);
+      setFormErrors({});
       setLoading(true);
       await loadClients();
     } catch (err) { setMsg(`Error: ${err.message}`); }
@@ -4111,9 +4184,17 @@ function ClientsPage() {
             <div className="card-header"><h3 style={{ fontFamily: "var(--font-display)" }}>New Client</h3></div>
             <div className="card-body">
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <div><label className="form-label">First Name</label><input className="form-input" value={newClient.first_name} onChange={e => setNewClient(p => ({ ...p, first_name: e.target.value }))} /></div>
+                <div>
+                  <label className="form-label">First Name</label>
+                  <input className="form-input" value={newClient.first_name} onChange={e => { setNewClient(p => ({ ...p, first_name: e.target.value })); setFormErrors(p => ({ ...p, first_name: undefined })); }} style={formErrors.first_name ? { borderColor: '#DC2626' } : {}} />
+                  {formErrors.first_name && <div style={{ color: '#DC2626', fontSize: 12, marginTop: 4 }}>{formErrors.first_name}</div>}
+                </div>
                 <div><label className="form-label">Last Name</label><input className="form-input" value={newClient.last_name} onChange={e => setNewClient(p => ({ ...p, last_name: e.target.value }))} /></div>
-                <div><label className="form-label">Email</label><input className="form-input" type="email" value={newClient.email} onChange={e => setNewClient(p => ({ ...p, email: e.target.value }))} /></div>
+                <div>
+                  <label className="form-label">Email</label>
+                  <input className="form-input" type="email" value={newClient.email} onChange={e => { setNewClient(p => ({ ...p, email: e.target.value })); setFormErrors(p => ({ ...p, email: undefined })); }} style={formErrors.email ? { borderColor: '#DC2626' } : {}} />
+                  {formErrors.email && <div style={{ color: '#DC2626', fontSize: 12, marginTop: 4 }}>{formErrors.email}</div>}
+                </div>
                 <div><label className="form-label">Phone</label><input className="form-input" value={newClient.phone} onChange={e => setNewClient(p => ({ ...p, phone: e.target.value }))} /></div>
                 <div style={{ gridColumn: "1 / -1" }}><label className="form-label">Address</label><input className="form-input" value={newClient.address_line1} onChange={e => setNewClient(p => ({ ...p, address_line1: e.target.value }))} /></div>
                 <div><label className="form-label">City</label><input className="form-input" value={newClient.city} onChange={e => setNewClient(p => ({ ...p, city: e.target.value }))} /></div>
@@ -4713,19 +4794,20 @@ function TeamPage() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
   const apiRef = useRef(null);
+  const mountedRef = useRef(true);
 
   const loadTeam = async () => {
     try {
       const mod = await import('./api.js');
       apiRef.current = mod.default;
       const result = await mod.team.list();
-      setMembers(Array.isArray(result) ? result : result.users || result.team || []);
+      if (mountedRef.current) setMembers(Array.isArray(result) ? result : result.users || result.team || []);
     } catch (err) {
       console.error('Failed to load team:', err.message);
-    } finally { setLoading(false); }
+    } finally { if (mountedRef.current) setLoading(false); }
   };
 
-  useEffect(() => { loadTeam(); }, []);
+  useEffect(() => { loadTeam(); return () => { mountedRef.current = false; }; }, []);
 
   const handleInvite = async () => {
     if (!apiRef.current || !invite.email || !invite.firstName || !invite.lastName) return;
@@ -4981,7 +5063,7 @@ function ForgotPasswordPage({ onShowLogin }) {
             <div className="form-group">
               <label className="form-label">New Password</label>
               <input className="form-input" type="password" value={password} onChange={e => setPassword(e.target.value)}
-                placeholder="Min 8 characters" />
+                placeholder="Min 10 characters" />
             </div>
             <div className="form-group">
               <label className="form-label">Confirm Password</label>
@@ -5074,11 +5156,11 @@ function ForgotEmailPage({ onShowLogin }) {
           </button>
 
           {results && (
-            <div style={{ background: results.maskedEmails.length ? "#F0FDF4" : "#FEF3C7", padding: "14px 16px", borderRadius: 10, marginBottom: 16 }}>
-              <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: results.maskedEmails.length ? "#166534" : "#92400E" }}>
+            <div style={{ background: results.maskedEmails?.length ? "#F0FDF4" : "#FEF3C7", padding: "14px 16px", borderRadius: 10, marginBottom: 16 }}>
+              <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: results.maskedEmails?.length ? "#166534" : "#92400E" }}>
                 {results.message}
               </p>
-              {results.maskedEmails.map((e, i) => (
+              {(results.maskedEmails || []).map((e, i) => (
                 <div key={i} style={{ fontSize: 15, fontFamily: "monospace", padding: "6px 0", color: "#1F2937" }}>{e}</div>
               ))}
             </div>
@@ -5234,7 +5316,7 @@ function RegisterPage({ onRegister, onShowLogin }) {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div className="form-group">
               <label className="form-label">Password *</label>
-              <input className="form-input" type="password" placeholder="Min 8 characters" value={form.password} onChange={e => update("password", e.target.value)} />
+              <input className="form-input" type="password" placeholder="Min 10 characters" value={form.password} onChange={e => update("password", e.target.value)} />
             </div>
             <div className="form-group">
               <label className="form-label">Confirm *</label>
@@ -5270,7 +5352,7 @@ function OnboardingWizard({ onComplete }) {
   // Company profile state
   const [co, setCo] = useState({
     name: '', phone: '', email: '', license_number: '',
-    city: '', state: '', usda_zone: '',
+    city: '', state: '', zip: '', usda_zone: '',
     labor_pricing_method: 'lump_sum', material_markup_pct: 35, delivery_fee: 150,
     tax_enabled: true, tax_rate: 0.0825, default_terms: '', warranty_terms: '',
   });
@@ -5298,7 +5380,7 @@ function OnboardingWizard({ onComplete }) {
       const fields = {};
       if (step === 1) { fields.name = co.name; }
       if (step === 2) { fields.phone = co.phone; fields.email = co.email; fields.license_number = co.license_number; }
-      if (step === 3) { fields.city = co.city; fields.state = co.state; fields.usda_zone = co.usda_zone; }
+      if (step === 3) { fields.city = co.city; fields.state = co.state; fields.zip = co.zip; fields.usda_zone = co.usda_zone; }
       if (step === 5) { fields.labor_pricing_method = co.labor_pricing_method; fields.material_markup_pct = parseFloat(co.material_markup_pct) || 35; fields.delivery_fee = parseFloat(co.delivery_fee) || 150; }
       if (step === 6) { fields.tax_enabled = co.tax_enabled; fields.tax_rate = parseFloat(co.tax_rate) || 0.0825; fields.default_terms = co.default_terms; fields.warranty_terms = co.warranty_terms; }
       if (step === 7 && selectedCrm && crmApiKey.trim()) {
@@ -5321,14 +5403,13 @@ function OnboardingWizard({ onComplete }) {
           const result = await apiRef.current.files.upload(logoFile, 'logo');
           const logoUrl = result?.cdn_url || result?.url;
           if (logoUrl) await apiRef.current.company.update({ logo_url: logoUrl });
-        } catch (e) { console.log('Logo upload:', e.message); }
+        } catch { }
       }
       // Import nursery list on step 4
       if (step === 4 && nurseryFile) {
         try {
-          const result = await apiRef.current.plants.importList(nurseryFile);
-          console.log('Nursery import result:', result);
-        } catch (e) { console.log('Nursery import:', e.message); }
+          await apiRef.current.plants.importList(nurseryFile);
+        } catch { }
       }
       setStep(s => s + 1);
     } catch (err) {
@@ -5350,7 +5431,7 @@ function OnboardingWizard({ onComplete }) {
         // Send invites
         for (const inv of invites) {
           if (inv.email.trim()) {
-            try { await apiRef.current.auth.invite({ email: inv.email, firstName: inv.name?.split(' ')[0] || 'Team', lastName: inv.name?.split(' ').slice(1).join(' ') || 'Member', role: inv.role }); } catch (e) { console.log('Invite error:', e.message); }
+            try { await apiRef.current.auth.invite({ email: inv.email, firstName: inv.name?.split(' ')[0] || 'Team', lastName: inv.name?.split(' ').slice(1).join(' ') || 'Member', role: inv.role }); } catch { }
           }
         }
         // Mark onboarding complete
@@ -5451,10 +5532,10 @@ function OnboardingWizard({ onComplete }) {
               <div className="form-group"><label className="form-label">State</label><input className="form-input" placeholder="TX" value={co.state} onChange={e => update('state', e.target.value)} /></div>
               <div className="form-group">
                 <label className="form-label">ZIP Code</label>
-                <input className="form-input" placeholder="77005" maxLength={5}
+                <input className="form-input" placeholder="77005" maxLength={5} value={co.zip}
                   onChange={async (e) => {
                     const zip = e.target.value.replace(/\D/g, '');
-                    e.target.value = zip;
+                    update('zip', zip);
                     if (zip.length === 5) {
                       try {
                         const res = await fetch(`https://phzmapi.org/${zip}.json`);
@@ -5462,7 +5543,7 @@ function OnboardingWizard({ onComplete }) {
                           const data = await res.json();
                           if (data.zone) update('usda_zone', data.zone);
                         }
-                      } catch (err) { console.log('Zone lookup failed:', err.message); }
+                      } catch { }
                     }
                   }} />
               </div>
@@ -5547,7 +5628,7 @@ function OnboardingWizard({ onComplete }) {
         )}
         {step === 8 && (
           <div>
-            <p style={{ fontSize: 14, color: "var(--filo-grey)", marginBottom: 16 }}>Your plan includes 3 users. Additional users are $99/mo each.</p>
+            <p style={{ fontSize: 14, color: "var(--filo-grey)", marginBottom: 16 }}>Your plan includes 3 users. Additional users are $125/mo each.</p>
             {invites.map((inv, i) => (
               <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
                 <input className="form-input" placeholder={`Team member ${i + 1} email`} style={{ flex: 1 }}

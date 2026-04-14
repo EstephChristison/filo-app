@@ -105,7 +105,8 @@ async function apiFetch(path, options = {}) {
       // Retry the original request with new token
       headers['Authorization'] = `Bearer ${getToken()}`;
       const retryController = new AbortController();
-      const retryTimeout = setTimeout(() => retryController.abort(), 30000);
+      const retryTimeoutMs = path.includes('removal-preview') || path.includes('bed-edge-preview') || path.includes('design-render') || path.includes('generate-design') || path.includes('design-adjust') || path.includes('design-hardscape') || path.includes('design-night-mode') || path.includes('plants/import') || path.includes('clients/import') || path.includes('/pdf') || path.includes('submittals/generate') ? 180000 : 30000;
+      const retryTimeout = setTimeout(() => retryController.abort(), retryTimeoutMs);
       response = await fetch(url, {
         ...options,
         headers,
