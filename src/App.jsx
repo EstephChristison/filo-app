@@ -1987,8 +1987,13 @@ function NewProjectPage() {
             setGeneratingBedEdge(true);
             try {
               const maskDataUrl = getBedEdgeMaskDataUrl();
-              const lsRemoval = (() => { try { return localStorage.getItem('filo_removal_preview'); } catch(e) { return null; } })();
-              const basePhoto = lsRemoval || removalPreview || photoUrls[0];
+              // Bed-edge ALWAYS operates on the original uploaded photo, never on
+              // the removal preview. The backend composite step guarantees every
+              // pixel outside the drawn polygon is preserved identically — so using
+              // the original means plants outside the bed stay exactly as they were.
+              // Using lsRemoval here caused plants to disappear because stale
+              // localStorage from prior sessions fed a plant-stripped photo as input.
+              const basePhoto = photoUrls[0];
               if (!basePhoto) { setError('No photo available — upload a photo first'); setGeneratingBedEdge(false); return; }
               const result = await api.bedEdgePreview.generate(basePhoto, maskDataUrl, bedEdgeStyle, 0);
               if (!result?.previewUrl) throw new Error('No preview image returned from server');
