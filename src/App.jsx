@@ -5258,6 +5258,73 @@ function LoginPage({ onLogin, onShowRegister, onShowForgotPassword, onShowForgot
 }
 
 // ─── Forgot Password Page ────────────────────────────────────────
+// Dedicated page for the /reset-password/:token URL (from email link)
+function ResetPasswordPage({ token, onDone }) {
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!password || password.length < 10) { setError("Password must be at least 10 characters"); return; }
+    if (!/[A-Z]/.test(password)) { setError("Must contain at least one uppercase letter"); return; }
+    if (!/[a-z]/.test(password)) { setError("Must contain at least one lowercase letter"); return; }
+    if (!/[0-9]/.test(password)) { setError("Must contain at least one number"); return; }
+    if (password !== confirm) { setError("Passwords don't match"); return; }
+    setLoading(true); setError("");
+    try {
+      const mod = await import('./api.js');
+      await mod.auth.resetPassword(token, password);
+      setSuccess(true);
+      setTimeout(onDone, 2000);
+    } catch (err) {
+      setError(err.message || "Reset failed. Token may be expired — request a new one.");
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="login-page">
+      <div className="login-card">
+        <div className="login-brand">
+          <span className="leaf">🌿</span>
+          <h1>FILO</h1>
+        </div>
+        {success ? (
+          <>
+            <h2 style={{ color: '#10B981', textAlign: 'center', marginBottom: 12 }}>✓ Password Reset</h2>
+            <p style={{ textAlign: 'center', color: 'var(--filo-grey)' }}>Redirecting to login...</p>
+          </>
+        ) : (
+          <>
+            <h2 style={{ marginBottom: 8 }}>Set a new password</h2>
+            <p style={{ fontSize: 14, color: 'var(--filo-grey)', marginBottom: 20 }}>Enter a new password for your FILO account.</p>
+            {error && <div style={{ padding: 12, background: '#FEE2E2', color: '#991B1B', borderRadius: 8, marginBottom: 16, fontSize: 14 }}>{error}</div>}
+            <form onSubmit={handleSubmit}>
+              <label style={{ display: 'block', marginBottom: 12 }}>
+                <span style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 4 }}>New password</span>
+                <input type="password" className="form-input" value={password} onChange={e => setPassword(e.target.value)} autoFocus required minLength={10} />
+              </label>
+              <label style={{ display: 'block', marginBottom: 16 }}>
+                <span style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 4 }}>Confirm password</span>
+                <input type="password" className="form-input" value={confirm} onChange={e => setConfirm(e.target.value)} required minLength={10} />
+              </label>
+              <p style={{ fontSize: 12, color: 'var(--filo-grey)', marginBottom: 16 }}>Must be 10+ chars with uppercase, lowercase, and a number.</p>
+              <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
+                {loading ? 'Resetting...' : 'Set New Password'}
+              </button>
+            </form>
+            <p style={{ fontSize: 13, color: 'var(--filo-grey)', textAlign: 'center', marginTop: 16 }}>
+              <a onClick={onDone} style={{ cursor: 'pointer', color: 'var(--filo-green)' }}>← Back to login</a>
+            </p>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ForgotPasswordPage({ onShowLogin }) {
   const [step, setStep] = useState("request"); // request | reset | done
   const [email, setEmail] = useState("");
@@ -5956,7 +6023,15 @@ export default function App() {
     return m ? m[1] : null;
   })();
 
-  const [view, setView] = useState(inviteToken ? "invite" : "loading"); // loading | invite | login | register | forgot-password | forgot-email | onboarding | app
+  // Detect password reset token in URL path: /reset-password/:token
+  const resetToken = (() => {
+    const m = window.location.pathname.match(/^\/reset-password\/([a-f0-9-]{36})$/i);
+    return m ? m[1] : null;
+  })();
+
+  const [view, setView] = useState(
+    resetToken ? "reset-password" : inviteToken ? "invite" : "loading"
+  ); // loading | invite | login | register | forgot-password | reset-password | forgot-email | onboarding | app
   const [user, setUser] = useState(null);
   const [page, setPage] = useState("projects");
   const [selectedProjectId, setSelectedProjectId] = useState(null);
@@ -5973,6 +6048,7 @@ export default function App() {
   // Check for existing session on mount
   useEffect(() => {
     if (inviteToken) return; // Don't auto-redirect when accepting an invite
+    if (resetToken) return; // Don't auto-redirect when resetting password
     const checkAuth = async () => {
       try {
         const mod = await import('./api.js');
@@ -6068,6 +6144,13 @@ export default function App() {
     <>
       <style>{STYLES}</style>
       <ForgotPasswordPage onShowLogin={() => setView("login")} />
+    </>
+  );
+
+  if (view === "reset-password") return (
+    <>
+      <style>{STYLES}</style>
+      <ResetPasswordPage token={resetToken} onDone={() => { window.history.replaceState({}, '', '/'); setView("login"); }} />
     </>
   );
 
