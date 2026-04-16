@@ -505,6 +505,9 @@ function Sidebar({ page, setPage, mobileOpen, setMobileOpen, user }) {
       { id: "billing", icon: "💳", label: "Billing" },
       { id: "team", icon: "🏢", label: "Team" },
     ]},
+    ...(user?.is_super_admin ? [{ section: "Admin", items: [
+      { id: "admin", icon: "🛠️", label: "Developer Portal" },
+    ]}] : []),
   ];
 
   return (
@@ -4786,6 +4789,289 @@ function BillingPage() {
 }
 
 // ─── Team Page ───────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════
+// AdminPage (Super Admin / Developer Portal)
+// ═══════════════════════════════════════════════════════════════════
+function AdminPage() {
+  const [tab, setTab] = useState('overview');
+  const [stats, setStats] = useState(null);
+  const [companies, setCompanies] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [activity, setActivity] = useState([]);
+  const [webhooks, setWebhooks] = useState([]);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [detail, setDetail] = useState(null);
+  const [msg, setMsg] = useState('');
+  const adminApi = useRef(null);
+
+  // Lazy load admin module
+  useEffect(() => {
+    import('./api.js').then(m => { adminApi.current = m.admin; loadAll(); });
+  }, []);
+
+  async function loadAll() {
+    setLoading(true); setError('');
+    try {
+      const [s, c, u, a, w] = await Promise.all([
+        adminApi.current.stats(),
+        adminApi.current.listCompanies({ limit: 200 }),
+        adminApi.current.listUsers({ limit: 200 }),
+        adminApi.current.recentActivity(50),
+        adminApi.current.webhookEvents(50),
+      ]);
+      setStats(s); setCompanies(c); setUsers(u); setActivity(a); setWebhooks(w);
+    } catch (e) {
+      setError(e.message || 'Failed to load admin data');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleResetPassword(userId, email) {
+    if (!confirm(`Send password reset to ${email}?`)) return;
+    try {
+      await adminApi.current.resetUserPassword(userId);
+      setMsg(`Reset email sent to ${email}`);
+      setTimeout(() => setMsg(''), 4000);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function handleUnlock(companyId, companyName) {
+    if (!confirm(`Unlock subscription for ${companyName}?`)) return;
+    try {
+      await adminApi.current.unlockCompany(companyId);
+      setMsg(`Unlocked ${companyName}`);
+      loadAll();
+      setTimeout(() => setMsg(''), 4000);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function viewCompany(id) {
+    try {
+      const d = await adminApi.current.getCompany(id);
+      setDetail(d);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  const statusColor = (s) => ({
+    active: '#10B981', trialing: '#3B82F6', past_due: '#F59E0B',
+    canceled: '#EF4444', locked: '#6B7280', paused: '#8B5CF6',
+  }[s] || '#6B7280');
+
+  const filtered = search
+    ? { companies: companies.filter(c => (c.name||'').toLowerCase().includes(search.toLowerCase()) || (c.email||'').toLowerCase().includes(search.toLowerCase())),
+        users: users.filter(u => (u.email||'').toLowerCase().includes(search.toLowerCase()) || (u.company_name||'').toLowerCase().includes(search.toLowerCase())) }
+    : { companies, users };
+
+  if (loading) return <div style={{ padding: 40 }}>Loading admin portal…</div>;
+
+  return (
+    <div style={{ padding: 24 }}>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>🛠️ Developer Portal</h1>
+        <p style={{ fontSize: 14, color: 'var(--filo-grey)' }}>Manage all companies, users, and support operations across FILO.</p>
+      </div>
+
+      {msg && <div style={{ padding: 12, background: '#D1FAE5', color: '#065F46', borderRadius: 8, marginBottom: 16 }}>{msg}</div>}
+      {error && <div style={{ padding: 12, background: '#FEE2E2', color: '#991B1B', borderRadius: 8, marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}><span>{error}</span><button onClick={() => setError('')} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>×</button></div>}
+
+      {/* Stats overview */}
+      {stats && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 24 }}>
+          {[
+            ['Companies', stats.companies],
+            ['Users', stats.users],
+            ['Projects', stats.projects],
+            ['Estimates', stats.estimates],
+            ['Active Subs', stats.subscriptions.active, '#10B981'],
+            ['Trialing', stats.subscriptions.trialing, '#3B82F6'],
+            ['Locked', stats.subscriptions.locked, '#EF4444'],
+            ['MRR', `$${Number(stats.mrr).toLocaleString()}`, '#355E3B'],
+          ].map(([label, value, color]) => (
+            <div key={label} style={{ padding: 16, background: '#FFF', border: '1px solid var(--filo-border)', borderRadius: 12 }}>
+              <div style={{ fontSize: 12, color: 'var(--filo-grey)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: color || 'var(--filo-text)', marginTop: 4 }}>{value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Search */}
+      <input
+        type="text" placeholder="Search companies or users by name, email, or company…"
+        value={search} onChange={e => setSearch(e.target.value)}
+        style={{ width: '100%', padding: 12, border: '1px solid var(--filo-border)', borderRadius: 8, fontSize: 14, marginBottom: 16 }}
+      />
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 8, borderBottom: '1px solid var(--filo-border)', marginBottom: 16 }}>
+        {['overview', 'companies', 'users', 'activity', 'webhooks'].map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            style={{ padding: '10px 16px', background: 'none', border: 'none', borderBottom: tab === t ? '2px solid var(--filo-green)' : '2px solid transparent', color: tab === t ? 'var(--filo-green)' : 'var(--filo-grey)', fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>
+            {t} {t === 'companies' ? `(${filtered.companies.length})` : t === 'users' ? `(${filtered.users.length})` : ''}
+          </button>
+        ))}
+      </div>
+
+      {/* Detail Modal */}
+      {detail && (
+        <div onClick={() => setDetail(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#FFF', borderRadius: 12, padding: 24, maxWidth: 800, width: '100%', maxHeight: '90vh', overflow: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h2 style={{ fontSize: 20, fontWeight: 700 }}>{detail.company.name}</h2>
+              <button onClick={() => setDetail(null)} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer' }}>×</button>
+            </div>
+            <p style={{ fontSize: 14, color: 'var(--filo-grey)', marginBottom: 16 }}>{detail.company.email} · Created {new Date(detail.company.created_at).toLocaleDateString()}</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
+              <div><strong>{detail.users.length}</strong> users</div>
+              <div><strong>{detail.projectCount}</strong> projects</div>
+              <div><strong>{detail.estimateCount}</strong> estimates</div>
+            </div>
+            {detail.subscription && (
+              <div style={{ padding: 12, background: 'var(--filo-cream, #FFF8E7)', borderRadius: 8, marginBottom: 16 }}>
+                <strong>Subscription:</strong> <span style={{ color: statusColor(detail.subscription.status) }}>{detail.subscription.status}</span>
+                {detail.subscription.trial_end && <div style={{ fontSize: 13, marginTop: 4 }}>Trial ends: {new Date(detail.subscription.trial_end).toLocaleString()}</div>}
+                {detail.subscription.current_period_end && <div style={{ fontSize: 13, marginTop: 4 }}>Period ends: {new Date(detail.subscription.current_period_end).toLocaleString()}</div>}
+              </div>
+            )}
+            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Users</h3>
+            <table style={{ width: '100%', fontSize: 13, marginBottom: 16 }}>
+              <thead><tr style={{ textAlign: 'left', borderBottom: '1px solid var(--filo-border)' }}><th style={{ padding: 6 }}>Email</th><th>Role</th><th>Active</th><th></th></tr></thead>
+              <tbody>
+                {detail.users.map(u => (
+                  <tr key={u.id} style={{ borderBottom: '1px solid var(--filo-border)' }}>
+                    <td style={{ padding: 6 }}>{u.email}</td>
+                    <td>{u.role}</td>
+                    <td>{u.is_active ? '✓' : '—'}</td>
+                    <td><button onClick={() => handleResetPassword(u.id, u.email)} style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--filo-border)', borderRadius: 4, cursor: 'pointer' }}>Reset pw</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Recent Activity</h3>
+            <div style={{ fontSize: 12, maxHeight: 200, overflow: 'auto' }}>
+              {detail.recentActivity.map((a, i) => (
+                <div key={i} style={{ padding: 4, borderBottom: '1px solid var(--filo-border)' }}>
+                  <strong>{a.action || a.event_type}</strong> — {a.email || 'system'} — {new Date(a.created_at).toLocaleString()}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab content */}
+      {tab === 'overview' && stats && (
+        <div>
+          <p style={{ fontSize: 14, color: 'var(--filo-grey)', marginBottom: 16 }}>
+            Platform has <strong>{stats.companies} companies</strong>, <strong>{stats.users} active users</strong>, generating <strong>${Number(stats.mrr).toLocaleString()}/mo MRR</strong>.
+          </p>
+          <p style={{ fontSize: 14, color: 'var(--filo-grey)' }}>
+            Use the tabs above to manage companies, view users, check recent activity, or inspect Stripe webhook events.
+          </p>
+        </div>
+      )}
+
+      {tab === 'companies' && (
+        <div style={{ overflowX: 'auto', background: '#FFF', border: '1px solid var(--filo-border)', borderRadius: 8 }}>
+          <table style={{ width: '100%', fontSize: 14, borderCollapse: 'collapse' }}>
+            <thead><tr style={{ background: 'var(--filo-cream, #FFF8E7)', textAlign: 'left' }}>
+              {['Company', 'Email', 'Users', 'Projects', 'Status', 'MRR', 'Actions'].map(h => <th key={h} style={{ padding: 10, fontSize: 12, fontWeight: 600, color: 'var(--filo-grey)' }}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {filtered.companies.map(c => (
+                <tr key={c.id} style={{ borderTop: '1px solid var(--filo-border)' }}>
+                  <td style={{ padding: 10, fontWeight: 500 }}><a onClick={() => viewCompany(c.id)} style={{ cursor: 'pointer', color: 'var(--filo-green)' }}>{c.name}</a></td>
+                  <td style={{ padding: 10, color: 'var(--filo-grey)' }}>{c.email || '—'}</td>
+                  <td style={{ padding: 10 }}>{c.user_count}</td>
+                  <td style={{ padding: 10 }}>{c.project_count}</td>
+                  <td style={{ padding: 10 }}>
+                    <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 12, background: statusColor(c.subscription_status) + '22', color: statusColor(c.subscription_status) }}>
+                      {c.subscription_status || 'none'}
+                    </span>
+                  </td>
+                  <td style={{ padding: 10 }}>${Number(c.monthly_total || 0).toFixed(0)}</td>
+                  <td style={{ padding: 10 }}>
+                    {['locked', 'past_due', 'canceled'].includes(c.subscription_status) && (
+                      <button onClick={() => handleUnlock(c.id, c.name)} style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--filo-green)', background: 'none', color: 'var(--filo-green)', borderRadius: 4, cursor: 'pointer' }}>Unlock</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab === 'users' && (
+        <div style={{ overflowX: 'auto', background: '#FFF', border: '1px solid var(--filo-border)', borderRadius: 8 }}>
+          <table style={{ width: '100%', fontSize: 14, borderCollapse: 'collapse' }}>
+            <thead><tr style={{ background: 'var(--filo-cream, #FFF8E7)', textAlign: 'left' }}>
+              {['Email', 'Name', 'Company', 'Role', 'Active', 'Created', 'Actions'].map(h => <th key={h} style={{ padding: 10, fontSize: 12, fontWeight: 600, color: 'var(--filo-grey)' }}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {filtered.users.map(u => (
+                <tr key={u.id} style={{ borderTop: '1px solid var(--filo-border)' }}>
+                  <td style={{ padding: 10, fontWeight: 500 }}>{u.email}{u.is_super_admin && <span style={{ marginLeft: 6, fontSize: 10, padding: '2px 6px', background: '#DBEAFE', color: '#1E40AF', borderRadius: 4 }}>ADMIN</span>}</td>
+                  <td style={{ padding: 10 }}>{(u.first_name || '') + ' ' + (u.last_name || '')}</td>
+                  <td style={{ padding: 10, color: 'var(--filo-grey)' }}>{u.company_name || '—'}</td>
+                  <td style={{ padding: 10 }}>{u.role}</td>
+                  <td style={{ padding: 10 }}>{u.is_active ? '✓' : '—'}</td>
+                  <td style={{ padding: 10, fontSize: 12, color: 'var(--filo-grey)' }}>{new Date(u.created_at).toLocaleDateString()}</td>
+                  <td style={{ padding: 10 }}>
+                    <button onClick={() => handleResetPassword(u.id, u.email)} style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--filo-border)', background: 'none', borderRadius: 4, cursor: 'pointer' }}>Reset pw</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab === 'activity' && (
+        <div style={{ background: '#FFF', border: '1px solid var(--filo-border)', borderRadius: 8, overflow: 'hidden' }}>
+          {activity.map((a, i) => (
+            <div key={i} style={{ padding: 12, borderBottom: '1px solid var(--filo-border)', fontSize: 13 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <strong>{a.action || a.event_type}</strong>
+                <span style={{ color: 'var(--filo-grey)' }}>{new Date(a.created_at).toLocaleString()}</span>
+              </div>
+              <div style={{ color: 'var(--filo-grey)', marginTop: 2 }}>{a.company_name || '—'} · {a.user_email || 'system'}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === 'webhooks' && (
+        <div style={{ background: '#FFF', border: '1px solid var(--filo-border)', borderRadius: 8, overflow: 'hidden' }}>
+          {webhooks.length === 0 ? (
+            <div style={{ padding: 24, textAlign: 'center', color: 'var(--filo-grey)' }}>No webhook events yet. Configure the Stripe webhook to start receiving events.</div>
+          ) : webhooks.map((w, i) => (
+            <div key={i} style={{ padding: 12, borderBottom: '1px solid var(--filo-border)', fontSize: 13 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <strong>{w.event_type}</strong>
+                <span style={{ color: w.processed ? '#10B981' : w.error ? '#EF4444' : '#F59E0B' }}>
+                  {w.processed ? '✓ processed' : w.error ? '✗ error' : 'pending'}
+                </span>
+              </div>
+              <div style={{ color: 'var(--filo-grey)', marginTop: 2, fontSize: 12 }}>{w.source} · {w.event_id} · {new Date(w.created_at).toLocaleString()}</div>
+              {w.error && <div style={{ color: '#991B1B', marginTop: 4, fontSize: 12 }}>{w.error}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TeamPage() {
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -5749,6 +6035,7 @@ export default function App() {
     settings: <ErrorBoundary><SettingsPage /></ErrorBoundary>,
     billing: <ErrorBoundary><BillingPage /></ErrorBoundary>,
     team: <ErrorBoundary><TeamPage /></ErrorBoundary>,
+    admin: <ErrorBoundary><AdminPage /></ErrorBoundary>,
   };
 
   if (view === "loading") return (

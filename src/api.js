@@ -774,6 +774,31 @@ export const billing = {
 };
 
 // ═══════════════════════════════════════════════════════════════════
+// Admin (Developer Portal — super_admin users only)
+// ═══════════════════════════════════════════════════════════════════
+
+export const admin = {
+  async stats() { return apiFetch('/admin/stats'); },
+  async listCompanies(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return apiFetch(`/admin/companies${qs ? '?' + qs : ''}`);
+  },
+  async getCompany(id) { return apiFetch(`/admin/companies/${id}`); },
+  async listUsers(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return apiFetch(`/admin/users${qs ? '?' + qs : ''}`);
+  },
+  async resetUserPassword(userId) {
+    return apiFetch(`/admin/users/${userId}/reset-password`, { method: 'POST' });
+  },
+  async unlockCompany(companyId) {
+    return apiFetch(`/admin/companies/${companyId}/unlock`, { method: 'POST' });
+  },
+  async recentActivity(limit = 100) { return apiFetch(`/admin/activity?limit=${limit}`); },
+  async webhookEvents(limit = 100) { return apiFetch(`/admin/webhook-events?limit=${limit}`); },
+};
+
+// ═══════════════════════════════════════════════════════════════════
 // AI (direct proxy calls)
 // ═══════════════════════════════════════════════════════════════════
 
