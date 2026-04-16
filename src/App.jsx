@@ -5195,6 +5195,7 @@ function LoginPage({ onLogin, onShowRegister, onShowForgotPassword, onShowForgot
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async () => {
     if (!email || !password) { setError("Email and password required"); return; }
@@ -5237,8 +5238,15 @@ function LoginPage({ onLogin, onShowRegister, onShowForgotPassword, onShowForgot
           </div>
           <div className="form-group">
             <label className="form-label">Password</label>
-            <input className="form-input" type="password" placeholder="••••••••" value={password}
-              onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} />
+            <div style={{ position: 'relative' }}>
+              <input className="form-input" type={showPassword ? "text" : "password"} placeholder="••••••••" value={password}
+                style={{ paddingRight: 44, width: '100%' }}
+                onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} />
+              <button type="button" onClick={() => setShowPassword(s => !s)} aria-label={showPassword ? "Hide password" : "Show password"}
+                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 4, fontSize: 18, lineHeight: 1, color: 'var(--filo-grey)' }}>
+                {showPassword ? '🙈' : '👁️'}
+              </button>
+            </div>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, marginTop: -4 }}>
             <span style={{ fontSize: 12, color: "var(--filo-green)", cursor: "pointer" }} onClick={onShowForgotPassword}>Forgot password?</span>
@@ -5265,6 +5273,8 @@ function ResetPasswordPage({ token, onDone }) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -5304,11 +5314,23 @@ function ResetPasswordPage({ token, onDone }) {
             <form onSubmit={handleSubmit}>
               <label style={{ display: 'block', marginBottom: 12 }}>
                 <span style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 4 }}>New password</span>
-                <input type="password" className="form-input" value={password} onChange={e => setPassword(e.target.value)} autoFocus required minLength={10} />
+                <div style={{ position: 'relative' }}>
+                  <input type={showPassword ? "text" : "password"} className="form-input" style={{ paddingRight: 44, width: '100%' }} value={password} onChange={e => setPassword(e.target.value)} autoFocus required minLength={10} />
+                  <button type="button" onClick={() => setShowPassword(s => !s)} aria-label={showPassword ? "Hide password" : "Show password"}
+                    style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 4, fontSize: 18, lineHeight: 1, color: 'var(--filo-grey)' }}>
+                    {showPassword ? '🙈' : '👁️'}
+                  </button>
+                </div>
               </label>
               <label style={{ display: 'block', marginBottom: 16 }}>
                 <span style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 4 }}>Confirm password</span>
-                <input type="password" className="form-input" value={confirm} onChange={e => setConfirm(e.target.value)} required minLength={10} />
+                <div style={{ position: 'relative' }}>
+                  <input type={showConfirm ? "text" : "password"} className="form-input" style={{ paddingRight: 44, width: '100%' }} value={confirm} onChange={e => setConfirm(e.target.value)} required minLength={10} />
+                  <button type="button" onClick={() => setShowConfirm(s => !s)} aria-label={showConfirm ? "Hide password" : "Show password"}
+                    style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 4, fontSize: 18, lineHeight: 1, color: 'var(--filo-grey)' }}>
+                    {showConfirm ? '🙈' : '👁️'}
+                  </button>
+                </div>
               </label>
               <p style={{ fontSize: 12, color: 'var(--filo-grey)', marginBottom: 16 }}>Must be 10+ chars with uppercase, lowercase, and a number.</p>
               <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
